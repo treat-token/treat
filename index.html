@@ -93,22 +93,25 @@
         }
 
         .header .nav-right .cta {
-            background: linear-gradient(135deg, #9945FF, #7a2be0);
-            color: #fff;
+            background: transparent;
             border: none;
-            -webkit-text-fill-color: #fff;
-            padding: 0.5rem 1.4rem;
-            font-size: 1rem;
-            font-weight: 700;
+            color: #a89890;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 0.6px;
+            text-transform: uppercase;
+            padding: 0.5rem 1rem;
             border-radius: 40px;
             cursor: pointer;
             transition: all 0.3s ease;
             font-family: inherit;
+            border: 1px solid transparent;
         }
 
         .header .nav-right .cta:hover {
-            background: linear-gradient(135deg, #7a2be0, #5a1ab0);
-            transform: scale(1.02);
+            color: #f0ece8;
+            border-color: #332a26;
+            background: #1a1614;
         }
 
         /* ===== DROPDOWN ===== */
@@ -954,14 +957,14 @@
             .header .brand { font-size: 1.2rem; }
             .header .brand img { width: 32px; height: 32px; }
             
-            .dropdown .dropbtn {
+            .header .nav-right .cta {
                 font-size: 0.9rem;
                 padding: 0.3rem 0.6rem;
             }
-            
-            .header .nav-right .cta {
-                font-size: 0.8rem;
-                padding: 0.3rem 1rem;
+
+            .dropdown .dropbtn {
+                font-size: 0.9rem;
+                padding: 0.3rem 0.6rem;
             }
 
             .hero { padding: 2rem 1.5rem; }
@@ -1016,14 +1019,14 @@
             .header .brand { font-size: 1rem; }
             .header .brand img { width: 28px; height: 28px; }
             
-            .dropdown .dropbtn {
+            .header .nav-right .cta {
                 font-size: 0.8rem;
                 padding: 0.2rem 0.5rem;
             }
-            
-            .header .nav-right .cta {
-                font-size: 0.7rem;
-                padding: 0.2rem 0.8rem;
+
+            .dropdown .dropbtn {
+                font-size: 0.8rem;
+                padding: 0.2rem 0.5rem;
             }
 
             .hero { padding: 1.5rem 1rem; border-radius: 24px; }
@@ -1084,8 +1087,8 @@
         @media (max-width: 380px) {
             .header .brand { font-size: 0.85rem; }
             .header .brand img { width: 24px; height: 24px; }
+            .header .nav-right .cta { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
             .dropdown .dropbtn { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
-            .header .nav-right .cta { font-size: 0.6rem; padding: 0.15rem 0.6rem; }
             .hero-text h1 { font-size: 1.6rem; }
             .card { padding: 1rem; }
             .swap-card .swap-box .swap-input-row input { font-size: 0.9rem; }
@@ -1104,7 +1107,7 @@
             <div class="nav-right">
                 <button class="cta" onclick="showSection('buy')">BUY TREAT</button>
                 <div class="dropdown">
-                    <button class="dropbtn" onclick="toggleDropdown(event)">☰ MENU</button>
+                    <button class="dropbtn" onclick="toggleDropdown(event)">☰</button>
                     <div class="dropdown-content" id="dropdownContent">
                         <button class="active" data-section="home" onclick="navigateTo('home')">HOME</button>
                         <button data-section="about" onclick="navigateTo('about')">ABOUT</button>
@@ -1139,7 +1142,7 @@
                             <span class="badge orange"> 50% BURN</span>
                         </div>
                         <div class="tagline">
-                            <strong>COMMUNITY-DRIVEN TOKEN ON SOLANA</strong> — 50% OF SUPPLY BURNED OVER 1 YEAR TO CREATE SCARCITY AND LONG-TERM VALUE.25% TOKENS WILL BE DISTRIBUTED AMOUNG TREAT TOKEN HOLDER IN 1 YEARS RANDOMLY - TREAT TEAM WIL HOLD 1% TREAT AMONG TOTAL SUPPLY
+                            <strong>COMMUNITY-DRIVEN TOKEN ON SOLANA</strong> — 50% OF SUPPLY BURNED OVER 1 YEAR TO CREATE SCARCITY AND LONG-TERM VALUE.
                         </div>
                     </div>
                 </div>

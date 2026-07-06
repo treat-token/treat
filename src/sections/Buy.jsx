@@ -158,6 +158,16 @@ export default function Buy({
     return data;
   };
 
+  // Helper function to convert base64 to Uint8Array
+  const base64ToUint8Array = (base64) => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
@@ -224,20 +234,25 @@ export default function Buy({
         throw new Error('No swap transaction received from DFlow');
       }
 
-      // 3. Deserialize the transaction (handle both legacy and versioned)
+      // 3. Deserialize the transaction using Uint8Array (no Buffer)
       let transaction;
       try {
-        // Try to parse as VersionedTransaction first
-        const buffer = Buffer.from(swapData.swapTransaction, 'base64');
+        // Convert base64 to Uint8Array
+        const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
+        
+        // Try to deserialize as VersionedTransaction first
         try {
-          transaction = VersionedTransaction.deserialize(buffer);
-        } catch {
+          transaction = VersionedTransaction.deserialize(transactionBytes);
+          console.log('✅ Deserialized as VersionedTransaction');
+        } catch (versionedError) {
           // Fallback to legacy Transaction
-          transaction = Transaction.from(buffer);
+          console.log('Falling back to legacy Transaction deserialization');
+          transaction = Transaction.from(transactionBytes);
+          console.log('✅ Deserialized as legacy Transaction');
         }
       } catch (txError) {
         console.error('Transaction deserialization error:', txError);
-        throw new Error('Failed to deserialize transaction');
+        throw new Error(`Failed to deserialize transaction: ${txError.message}`);
       }
 
       console.log('📝 Requesting Phantom to sign and send transaction...');

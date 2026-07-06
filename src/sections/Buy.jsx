@@ -322,7 +322,7 @@ export default function Buy({
               </div>
             </div>
 
-            {/* SWAP BUTTON - Only shows when wallet is connected */}
+            {/* ONLY SWAP BUTTON - NO CONNECT BUTTON */}
             <button
               className="swap-btn"
               onClick={handleSwapClick}
@@ -365,7 +365,7 @@ export default function Buy({
         </p>
       </div>
 
-      {/* Confirmation Dialog - Only shows when triggered */}
+      {/* Confirmation Dialog */}
       {showConfirmDialog && confirmData && (
         <div style={{
           position: 'fixed',

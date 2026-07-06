@@ -1,0 +1,35 @@
+name = "treat-token-app"
+type = "javascript"
+account_id = ""
+workers_dev = true
+route = ""
+zone_id = ""
+
+[env.production]
+name = "treat-token-app-prod"
+routes = [
+  { pattern = "example.com/*", zone_name = "example.com" }
+]
+
+[build]
+command = "npm run build"
+cwd = "./"
+watch_paths = ["src/**/*.{ts,tsx,js,jsx}"]
+
+[[build.upload]]
+format = "service-worker"
+
+[build.upload.rules]
+type = "CompiledContentType"
+globs = ["**/*.js"]
+fallthrough = true
+
+[build.upload.rules2]
+type = "Text"
+globs = ["**/*.json"]
+fallthrough = true
+
+[env.development]
+
+[[analytics]]
+enabled = true

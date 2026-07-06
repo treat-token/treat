@@ -1,10 +1,13 @@
-// src/sections/Buy.js
+// src/sections/Buy.jsx
 import React, { useState, useEffect } from 'react';
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { callRpc } from '../utils/rpc';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+// No API key needed - using proxy
+console.log('🔗 Buy.jsx using RPC proxy');
 
 export default function Buy({ 
   walletConnected, 

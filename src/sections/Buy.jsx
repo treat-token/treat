@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
+import { getCurrentRpcEndpoint } from '../utils/rpc';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
-const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
 
 export default function Buy({ 
   walletConnected, 
@@ -126,7 +126,8 @@ export default function Buy({
     setIsSwapping(true);
     try {
       const phantom = window.phantom.solana;
-      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+      const rpcEndpoint = getCurrentRpcEndpoint();
+      const connection = new Connection(rpcEndpoint, 'confirmed');
 
       console.log('🔄 Starting swap with Phantom...');
       console.log('Amount:', amount);

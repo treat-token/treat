@@ -1,5 +1,6 @@
+// src/sections/Buy.js
 import React, { useState, useEffect } from 'react';
-import { Connection, PublicKey, Transaction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -20,7 +21,7 @@ export default function Buy({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
 
-  // Use Cloudflare proxy endpoint
+  // Use Alchemy RPC
   const RPC_ENDPOINT = process.env.REACT_APP_ALCHEMY_API_KEY 
     ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.REACT_APP_ALCHEMY_API_KEY}`
     : 'https://api.mainnet-beta.solana.com';
@@ -101,8 +102,8 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
-  // Dflow API Functions using proxy
-  const callDflowApi = async (endpoint, data) => {
+  // DFlow API call via Cloudflare proxy
+  const callDflowApi = async (endpoint, method, data) => {
     const response = await fetch('/api/dflow', {
       method: 'POST',
       headers: {
@@ -110,6 +111,7 @@ export default function Buy({
       },
       body: JSON.stringify({
         endpoint: endpoint,
+        method: method,
         data: data
       })
     });
@@ -123,32 +125,33 @@ export default function Buy({
   };
 
   const getDflowQuote = async (amount) => {
-    console.log('Fetching quote from Dflow via proxy...');
+    console.log('Fetching quote from DFlow via proxy...');
     console.log('From:', SOL_MINT);
     console.log('To:', TREAT_MINT_ADDRESS);
     console.log('Amount:', amount);
     
-    const data = await callDflowApi('quote', {
-      from: SOL_MINT,
-      to: TREAT_MINT_ADDRESS,
+    const data = await callDflowApi('quote', 'GET', {
+      inputMint: SOL_MINT,
+      outputMint: TREAT_MINT_ADDRESS,
       amount: amount.toString(),
-      slippage: 0.5,
+      slippageBps: '50', // 0.5% slippage
     });
 
     console.log('✅ Quote received:', data);
     
-    if (!data || !data.quote) {
-      throw new Error('No quote received from Dflow');
+    if (!data || !data.routePlan) {
+      throw new Error('No quote received from DFlow');
     }
 
     return data;
   };
 
   const getDflowSwap = async (quoteData) => {
-    const data = await callDflowApi('swap', {
-      quote: quoteData.quote,
-      wallet: walletAddress,
-      slippage: 0.5,
+    const data = await callDflowApi('swap', 'POST', {
+      userPublicKey: walletAddress,
+      quoteResponse: quoteData,
+      dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: 150000,
     });
 
     console.log('✅ Swap transaction received');
@@ -184,22 +187,22 @@ export default function Buy({
       const phantom = window.phantom.solana;
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
       
-      console.log('🔄 Starting swap with Dflow...');
+      console.log('🔄 Starting swap with DFlow...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
 
       // Convert SOL to lamports (1 SOL = 1e9 lamports)
       const amountInLamports = Math.floor(amount * 1e9);
       
-      // 1. Get quote from Dflow
+      // 1. Get quote from DFlow
       let quoteData;
       try {
         quoteData = await getDflowQuote(amountInLamports);
         console.log('📊 Quote received:', quoteData);
         
         // Update output with actual quote
-        if (quoteData.quote && quoteData.quote.outAmount) {
-          const outAmount = parseFloat(quoteData.quote.outAmount) / 1e6;
+        if (quoteData && quoteData.outAmount) {
+          const outAmount = parseFloat(quoteData.outAmount) / 1e6; // Adjust decimals for TREAT
           setSwapOutput(outAmount.toFixed(4));
         }
       } catch (quoteError) {
@@ -207,7 +210,7 @@ export default function Buy({
         throw new Error(`Could not get swap quote: ${quoteError.message}`);
       }
 
-      // 2. Get swap transaction from Dflow
+      // 2. Get swap transaction from DFlow
       let swapData;
       try {
         swapData = await getDflowSwap(quoteData);
@@ -217,19 +220,32 @@ export default function Buy({
         throw new Error(`Could not create swap transaction: ${swapError.message}`);
       }
 
-      if (!swapData || !swapData.transaction) {
-        throw new Error('No swap transaction received from Dflow');
+      if (!swapData || !swapData.swapTransaction) {
+        throw new Error('No swap transaction received from DFlow');
       }
 
-      // 3. Deserialize the transaction
-      const swapTransactionBuf = Buffer.from(swapData.transaction, 'base64');
-      const transaction = Transaction.from(swapTransactionBuf);
+      // 3. Deserialize the transaction (handle both legacy and versioned)
+      let transaction;
+      try {
+        // Try to parse as VersionedTransaction first
+        const buffer = Buffer.from(swapData.swapTransaction, 'base64');
+        try {
+          transaction = VersionedTransaction.deserialize(buffer);
+        } catch {
+          // Fallback to legacy Transaction
+          transaction = Transaction.from(buffer);
+        }
+      } catch (txError) {
+        console.error('Transaction deserialization error:', txError);
+        throw new Error('Failed to deserialize transaction');
+      }
 
       console.log('📝 Requesting Phantom to sign and send transaction...');
 
       // 4. Send transaction with Phantom
       let signature;
       try {
+        // Use Phantom's signAndSendTransaction
         const result = await phantom.signAndSendTransaction(transaction);
         signature = result.signature;
       } catch (phantomError) {
@@ -237,7 +253,7 @@ export default function Buy({
         if (phantomError.code === 4001 || phantomError.message?.includes('User rejected')) {
           throw new Error('User rejected the transaction');
         }
-        throw new Error('Failed to send transaction with Phantom');
+        throw new Error(`Failed to send transaction: ${phantomError.message}`);
       }
 
       console.log('✅ Transaction sent! Signature:', signature);
@@ -272,6 +288,7 @@ export default function Buy({
         throw new Error('Transaction confirmation timeout. Check explorer for status.');
       }
 
+      // 6. Get the actual output amount
       const outputAmount = swapData.outAmount 
         ? parseFloat(swapData.outAmount) / 1e6 
         : parseFloat(swapOutput);
@@ -286,6 +303,7 @@ export default function Buy({
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
 
+      // Refresh balances
       if (window.refreshBalances) {
         setTimeout(async () => {
           await window.refreshBalances();
@@ -299,12 +317,16 @@ export default function Buy({
       
       if (errorMessage.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
-      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity')) {
+      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
         showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
       } else if (errorMessage.includes('timeout')) {
         showToast('❌ Timeout', 'Transaction took too long. Check explorer for status.', 'error');
       } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
         showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
+      } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
+        showToast('❌ API Key Error', 'DFlow API key is missing or invalid. Please check environment variables.', 'error');
+      } else if (errorMessage.includes('insufficient balance')) {
+        showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }

@@ -141,7 +141,8 @@ export default function Buy({
       
       // Add a memo instruction (for demo purposes)
       const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-      const memoData = Buffer.from(`Swap ${amount} SOL for TREAT`, 'utf8');
+      const memoText = `Swap ${amount} SOL for TREAT`;
+      const memoData = new TextEncoder().encode(memoText);
       
       // Note: This is a simplified example. In production, you'd use Jupiter or Raydium for actual swaps
       // For now, we'll just show the transaction flow

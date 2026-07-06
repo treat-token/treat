@@ -1926,16 +1926,14 @@
             // Update swap button
             const btn = document.getElementById('connectWalletBtn');
             btn.classList.add('connected');
-            btn.innerHTML = '✅ CONNECTED<br><span class="wallet-address">' +
-                walletAddress.slice(0, 6) + '...' + walletAddress.slice(-6) +
-                '</span>';
+            btn.textContent = '✅ CONNECTED - ' + walletAddress.slice(0, 6) + '...' + walletAddress.slice(-6);
 
             document.getElementById('swapBtn').disabled = false;
-            
+
             await fetchBalances();
             await fetchPriceData();
             updateSwapRate();
-            
+
             showToast('✅ Connected', 'Wallet: ' + walletAddress.slice(0, 8) + '...', 'success');
         }
 
@@ -2061,49 +2059,54 @@
             if (!window.solana || !walletConnected) return;
 
             try {
-                // Get SOL balance
-                const solBalanceLamports = await window.solana.getBalance();
-                solBalance = solBalanceLamports / 1e9;
+                // Get SOL balance using Phantom
+                const lamports = await window.solana.getBalance();
+                solBalance = lamports / 1e9;
                 document.getElementById('solBalance').textContent = solBalance.toFixed(4);
+                console.log('SOL Balance:', solBalance);
 
                 // Get TREAT token balance
                 try {
-                    const connection = window.solana.connection;
-                    // Use PublicKey from the loaded library
-                    if (window.solanaWeb3) {
-                        const mintPubkey = new window.solanaWeb3.PublicKey(TREAT_MINT_ADDRESS);
-                        const tokenAccounts = await connection.getTokenAccountsByOwner(
-                            window.solana.publicKey,
-                            { mint: mintPubkey }
+                    // Create a connection to Solana mainnet
+                    const connection = new window.solanaWeb3.Connection(
+                        'https://api.mainnet-beta.solana.com',
+                        'confirmed'
+                    );
+
+                    const mintPubkey = new window.solanaWeb3.PublicKey(TREAT_MINT_ADDRESS);
+                    const tokenAccounts = await connection.getTokenAccountsByOwner(
+                        window.solana.publicKey,
+                        { mint: mintPubkey }
+                    );
+
+                    if (tokenAccounts.value && tokenAccounts.value.length > 0) {
+                        const accountInfo = await connection.getTokenAccountBalance(
+                            tokenAccounts.value[0].pubkey
                         );
-                        
-                        if (tokenAccounts.value.length > 0) {
-                            const accountInfo = await connection.getTokenAccountBalance(
-                                tokenAccounts.value[0].pubkey
-                            );
-                            treatBalance = accountInfo.value.uiAmount || 0;
-                        } else {
-                            treatBalance = 0;
-                        }
+                        treatBalance = accountInfo.value.uiAmount || 0;
+                        console.log('TREAT Balance:', treatBalance);
                     } else {
-                        // Fallback using simple method
                         treatBalance = 0;
+                        console.log('No TREAT token account found');
                     }
                 } catch (tokenError) {
                     console.warn('Could not fetch TREAT balance:', tokenError);
                     treatBalance = 0;
                 }
-                
+
                 document.getElementById('treatBalance').textContent = treatBalance.toFixed(2);
 
                 // Set up input listener
-                document.getElementById('swapInput').addEventListener('input', function() {
+                const swapInput = document.getElementById('swapInput');
+                swapInput.removeEventListener('input', updateSwapOutput);
+                swapInput.addEventListener('input', function() {
                     updateSwapOutput();
                     updateUsdValue();
                 });
 
             } catch (error) {
                 console.error('Error fetching balances:', error);
+                showToast('⚠️ Balance Error', 'Could not fetch balances: ' + error.message, 'error');
             }
         }
 
@@ -2203,48 +2206,92 @@
 
         async function performDflowSwap(amountInSol) {
             try {
-                const response = await fetch('https://api.dflow.io/v1/swap', {
+                const amountInLamports = Math.floor(amountInSol * 1e9);
+                const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+                // Get swap quote from Jupiter
+                const quoteResponse = await fetch(
+                    `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${TREAT_MINT_ADDRESS}&amount=${amountInLamports}&slippageBps=50`
+                );
+
+                if (!quoteResponse.ok) {
+                    throw new Error('Failed to get Jupiter quote');
+                }
+
+                const quoteData = await quoteResponse.json();
+
+                if (!quoteData.data || quoteData.data.length === 0) {
+                    throw new Error('No swap route found');
+                }
+
+                const route = quoteData.data[0];
+                const expectedOutput = parseInt(route.outAmount) / 1e6; // TREAT has 6 decimals
+
+                console.log('Got quote:', route);
+
+                // Get swap instruction from Jupiter
+                const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        fromMint: 'So11111111111111111111111111111111111111112',
-                        toMint: TREAT_MINT_ADDRESS,
-                        amount: amountInSol,
-                        slippage: 0.5,
-                        wallet: walletAddress
+                        quoteResponse: route,
+                        userPublicKey: walletAddress,
+                        wrapUnwrapSOL: true,
                     })
                 });
 
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(errorData.message || 'Swap API error');
+                if (!swapResponse.ok) {
+                    throw new Error('Failed to get swap instruction');
                 }
 
-                const data = await response.json();
-                
-                if (data.transaction) {
-                    // For demo, simulate transaction
-                    // In production, you would send the transaction
-                    const txSignature = 'DEMO_TX_' + Date.now().toString().slice(-8);
-                    
-                    return {
-                        success: true,
-                        received: data.expectedOutput || (amountInSol * 1000),
-                        txid: txSignature
-                    };
-                } else {
-                    throw new Error('No transaction returned from Dflow');
+                const swapData = await swapResponse.json();
+                const transaction = swapData.swapTransaction;
+
+                if (!transaction) {
+                    throw new Error('No transaction returned from Jupiter');
                 }
+
+                // Decode transaction
+                const txBuf = Buffer.from(transaction, 'base64');
+                const tx = window.solanaWeb3.Transaction.from(txBuf);
+
+                // Sign and send transaction
+                const signedTx = await window.solana.signAndSendTransaction(tx);
+
+                console.log('Transaction signed:', signedTx);
+
+                // Wait for confirmation
+                const connection = new window.solanaWeb3.Connection(
+                    'https://api.mainnet-beta.solana.com',
+                    'confirmed'
+                );
+
+                await connection.confirmTransaction(signedTx.signature, 'confirmed');
+
+                return {
+                    success: true,
+                    received: expectedOutput.toFixed(2),
+                    txid: signedTx.signature
+                };
 
             } catch (error) {
-                console.error('Dflow swap error:', error);
+                console.error('Swap error:', error);
                 throw error;
             }
         }
 
-        // ===== LOAD PUBLIC KEY LIBRARY =====
+        // ===== LOAD REQUIRED LIBRARIES =====
+        // Load Buffer for transaction encoding/decoding
+        const bufferScript = document.createElement('script');
+        bufferScript.src = 'https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js';
+        bufferScript.onload = function() {
+            console.log('Buffer library loaded');
+            window.Buffer = window.Buffer || globalThis.Buffer;
+        };
+        document.head.appendChild(bufferScript);
+
         const script = document.createElement('script');
         script.src = 'https://unpkg.com/@solana/web3.js@1.87.0/lib/index.iife.js';
         script.onload = function() {

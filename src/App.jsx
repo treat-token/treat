@@ -13,19 +13,15 @@ import FAQ from './sections/FAQ';
 import Buy from './sections/Buy';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
+import { callRpc } from './utils/rpc';
 
 const NETWORK = WalletAdapterNetwork.Mainnet;
-
-// Use environment variables for API keys
-const ALCHEMY_API_KEY = process.env.REACT_APP_ALCHEMY_API_KEY || 'k5jwTvMDFEvbPGj5yreGA';
-const ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
-// Log which endpoint is being used (hide API key for security)
-console.log('🚀 App initialized with:');
-console.log('📡 RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
-console.log('🔑 Alchemy API Key:', ALCHEMY_API_KEY ? '✅ Set' : '❌ Missing');
-console.log('🔑 Jupiter API Key:', process.env.REACT_APP_JUPITER_API_KEY ? '✅ Set' : '❌ Missing');
+// Use the proxy endpoint (no API key needed in client)
+const ENDPOINT = '/api/rpc';
+
+console.log('🚀 App initialized with proxy RPC endpoint');
 
 const wallets = [new PhantomWalletAdapter()];
 
@@ -143,36 +139,27 @@ function AppContent() {
     const pubKey = new PublicKey(pubKeyStr);
     
     try {
-      const connection = new Connection(ENDPOINT, 'confirmed');
-
-      // Fetch SOL balance
+      // Fetch SOL balance using proxy
       try {
-        const solBalance = await Promise.race([
-          connection.getBalance(pubKey),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('SOL balance fetch timeout')), 10000)
-          )
-        ]);
-        setSolBalance(solBalance / 1e9);
+        const result = await callRpc('getBalance', [pubKey.toBase58()]);
+        const balance = result.value || 0;
+        setSolBalance(balance / 1e9);
       } catch (solError) {
         console.warn('Could not fetch SOL balance:', solError.message);
         setSolBalance(0);
       }
 
-      // Fetch TREAT token balance
+      // Fetch TREAT token balance using proxy
       try {
-        const tokenAccounts = await Promise.race([
-          connection.getParsedTokenAccountsByOwner(pubKey, {
-            mint: new PublicKey(TREAT_MINT_ADDRESS),
-          }),
-          new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Token balance fetch timeout')), 10000)
-          )
+        const result = await callRpc('getTokenAccountsByOwner', [
+          pubKey.toBase58(),
+          { mint: TREAT_MINT_ADDRESS },
+          { encoding: 'jsonParsed' }
         ]);
-
+        
         let treatBalance = 0;
-        if (tokenAccounts.value && tokenAccounts.value.length > 0) {
-          treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
+        if (result.value && result.value.length > 0) {
+          treatBalance = result.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
         }
         setTreatBalance(treatBalance);
       } catch (tokenError) {
@@ -265,17 +252,6 @@ function AppContent() {
 }
 
 export default function App() {
-  // Check if environment variables are set
-  if (!process.env.REACT_APP_ALCHEMY_API_KEY) {
-    console.warn('⚠️ REACT_APP_ALCHEMY_API_KEY not found in environment variables!');
-    console.warn('⚠️ Using fallback API key (may have rate limits)');
-  }
-  
-  if (!process.env.REACT_APP_JUPITER_API_KEY) {
-    console.warn('⚠️ REACT_APP_JUPITER_API_KEY not found in environment variables!');
-    console.warn('⚠️ Jupiter API calls may fail or be rate limited');
-  }
-
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
       <WalletProvider wallets={wallets} autoConnect>

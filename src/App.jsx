@@ -14,16 +14,45 @@ import Buy from './sections/Buy';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 
-const NETWORK = WalletAdapterNetwork.Mainnet;
-// Use Alchemy RPC with API key from environment
-const ALCHEMY_API_KEY = process.env.REACT_APP_ALCHEMY_API_KEY || process.env.ALCHEMY_API_KEY;
-const ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+// Use a custom RPC endpoint that goes through our Cloudflare Function
+const ENDPOINT = '/api/rpc'; // This will be handled by Cloudflare Functions
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
-// Log which endpoint is being used (hide API key)
-console.log('Using RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
-
 const wallets = [new PhantomWalletAdapter()];
+
+// Custom Connection that uses our proxy
+class ProxyConnection extends Connection {
+  constructor() {
+    super(ENDPOINT);
+    // Override the _rpcRequest method to use our proxy
+    this._rpcRequest = async (method, args) => {
+      const body = {
+        jsonrpc: '2.0',
+        id: 1,
+        method: method,
+        params: args,
+      };
+
+      const response = await fetch(ENDPOINT, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        throw new Error(`RPC request failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error.message || 'RPC error');
+      }
+      return data.result;
+    };
+  }
+}
 
 function AppContent() {
   const [activeSection, setActiveSection] = useState('home');
@@ -49,7 +78,6 @@ function AppContent() {
   useEffect(() => {
     checkWalletConnection();
 
-    // Listen for Phantom connection changes
     const handleConnect = () => {
       checkWalletConnection();
     };
@@ -73,7 +101,6 @@ function AppContent() {
   }, []);
 
   const checkWalletConnection = async () => {
-    // Wait a bit for Phantom to load
     await new Promise(resolve => setTimeout(resolve, 500));
 
     if (window.phantom?.solana?.isPhantom) {
@@ -132,15 +159,14 @@ function AppContent() {
     const pubKey = new PublicKey(pubKeyStr);
     
     try {
-      // Use Alchemy RPC with higher commitment for reliability
-      const connection = new Connection(ENDPOINT, 'confirmed');
+      const connection = new ProxyConnection();
 
-      // Fetch SOL balance with timeout
+      // Fetch SOL balance
       try {
         const solBalance = await Promise.race([
           connection.getBalance(pubKey),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('SOL balance fetch timeout')), 5000)
+            setTimeout(() => reject(new Error('SOL balance fetch timeout')), 10000)
           )
         ]);
         setSolBalance(solBalance / 1e9);
@@ -149,14 +175,14 @@ function AppContent() {
         setSolBalance(0);
       }
 
-      // Fetch TREAT token balance with timeout
+      // Fetch TREAT token balance
       try {
         const tokenAccounts = await Promise.race([
           connection.getParsedTokenAccountsByOwner(pubKey, {
             mint: new PublicKey(TREAT_MINT_ADDRESS),
           }),
           new Promise((_, reject) =>
-            setTimeout(() => reject(new Error('Token balance fetch timeout')), 5000)
+            setTimeout(() => reject(new Error('Token balance fetch timeout')), 10000)
           )
         ]);
 
@@ -181,7 +207,7 @@ function AppContent() {
       const response = await Promise.race([
         fetch('https://api.dexscreener.com/latest/dex/search?q=3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump'),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error('Price fetch timeout')), 5000)
+          setTimeout(() => reject(new Error('Price fetch timeout')), 10000)
         )
       ]);
 
@@ -194,7 +220,6 @@ function AppContent() {
       }
     } catch (error) {
       console.warn('Price fetch error:', error.message);
-      // Use fallback price
       setTreatPrice(0.001);
     }
   };
@@ -256,11 +281,6 @@ function AppContent() {
 }
 
 export default function App() {
-  // Check if API key exists
-  if (!process.env.REACT_APP_ALCHEMY_API_KEY && !process.env.ALCHEMY_API_KEY) {
-    console.warn('Alchemy API key not found in environment variables!');
-  }
-
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
       <WalletProvider wallets={wallets} autoConnect>

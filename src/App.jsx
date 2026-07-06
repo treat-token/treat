@@ -13,9 +13,11 @@ import FAQ from './sections/FAQ';
 import Buy from './sections/Buy';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
+import { getCurrentRpcEndpoint, getNextRpcEndpoint } from './utils/rpc';
 
 const NETWORK = WalletAdapterNetwork.Mainnet;
-const ENDPOINT = clusterApiUrl(NETWORK);
+// Primary endpoint will fallback to alternatives if needed
+let ENDPOINT = getCurrentRpcEndpoint();
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
 const wallets = [new PhantomWalletAdapter()];
@@ -120,30 +122,72 @@ function AppContent() {
   };
 
   const fetchBalances = async (pubKeyStr) => {
-    try {
-      const connection = new Connection(ENDPOINT, 'confirmed');
-      const pubKey = new PublicKey(pubKeyStr);
+    const pubKey = new PublicKey(pubKeyStr);
+    let attempts = 0;
+    const maxAttempts = 3;
 
-      const solBalance = await connection.getBalance(pubKey);
-      setSolBalance(solBalance / 1e9);
+    while (attempts < maxAttempts) {
+      try {
+        const rpcEndpoint = attempts === 0 ? ENDPOINT : getNextRpcEndpoint();
+        const connection = new Connection(rpcEndpoint, 'confirmed');
 
-      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, {
-        mint: new PublicKey(TREAT_MINT_ADDRESS),
-      });
+        // Fetch SOL balance with timeout
+        try {
+          const solBalance = await Promise.race([
+            connection.getBalance(pubKey),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('SOL balance fetch timeout')), 3000)
+            )
+          ]);
+          setSolBalance(solBalance / 1e9);
+        } catch (solError) {
+          console.warn('Could not fetch SOL balance:', solError.message);
+          setSolBalance(0);
+        }
 
-      let treatBalance = 0;
-      if (tokenAccounts.value.length > 0) {
-        treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+        // Fetch TREAT token balance with timeout
+        try {
+          const tokenAccounts = await Promise.race([
+            connection.getParsedTokenAccountsByOwner(pubKey, {
+              mint: new PublicKey(TREAT_MINT_ADDRESS),
+            }),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Token balance fetch timeout')), 3000)
+            )
+          ]);
+
+          let treatBalance = 0;
+          if (tokenAccounts.value && tokenAccounts.value.length > 0) {
+            treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
+          }
+          setTreatBalance(treatBalance);
+          return; // Success, exit the retry loop
+        } catch (tokenError) {
+          console.warn('Could not fetch TREAT balance:', tokenError.message);
+          setTreatBalance(0);
+          return; // Don't retry token balance on error
+        }
+      } catch (error) {
+        console.warn(`Balance fetch attempt ${attempts + 1} failed:`, error.message);
+        attempts++;
+        if (attempts >= maxAttempts) {
+          setSolBalance(0);
+          setTreatBalance(0);
+          console.warn('All balance fetch attempts failed');
+        }
       }
-      setTreatBalance(treatBalance);
-    } catch (error) {
-      console.error('Error fetching balances:', error);
     }
   };
 
   const fetchPriceData = async () => {
     try {
-      const response = await fetch('https://api.dexscreener.com/latest/dex/search?q=3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump');
+      const response = await Promise.race([
+        fetch('https://api.dexscreener.com/latest/dex/search?q=3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump'),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Price fetch timeout')), 5000)
+        )
+      ]);
+
       if (response.ok) {
         const data = await response.json();
         if (data.pairs && data.pairs.length > 0) {
@@ -152,7 +196,9 @@ function AppContent() {
         }
       }
     } catch (error) {
-      console.error('Price fetch error:', error);
+      console.warn('Price fetch error:', error.message);
+      // Use fallback price
+      setTreatPrice(0.001);
     }
   };
 

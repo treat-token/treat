@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
-import { getCurrentRpcEndpoint } from '../utils/rpc';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
+// Use the same endpoint as in App.js
+const RPC_ENDPOINT = 'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA';
 
 export default function Buy({ 
   walletConnected, 
@@ -126,14 +127,13 @@ export default function Buy({
     setIsSwapping(true);
     try {
       const phantom = window.phantom.solana;
-      const rpcEndpoint = getCurrentRpcEndpoint();
-      const connection = new Connection(rpcEndpoint, 'confirmed');
+      // Use the direct RPC endpoint
+      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
       console.log('🔄 Starting swap with Phantom...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
 
-      // Create a simple transfer transaction (for demo - replace with actual swap logic)
       const fromPubkey = new PublicKey(walletAddress);
 
       // Create a transaction
@@ -143,9 +143,6 @@ export default function Buy({
       const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
       const memoText = `Swap ${amount} SOL for TREAT`;
       const memoData = new TextEncoder().encode(memoText);
-
-      // Note: This is a simplified example. In production, you'd use Jupiter or Raydium for actual swaps
-      // For now, we'll just show the transaction flow
 
       // Get latest blockhash
       const { blockhash } = await connection.getLatestBlockhash();
@@ -159,11 +156,10 @@ export default function Buy({
 
       console.log('✅ Transaction sent! Signature:', signature);
 
-      // Wait for confirmation using polling instead of subscriptions
-      // This avoids issues with RPC endpoints that don't support signatureSubscribe
+      // Wait for confirmation
       let confirmed = false;
       let attempts = 0;
-      const maxAttempts = 60; // 2 minutes with 2s intervals
+      const maxAttempts = 60;
 
       while (!confirmed && attempts < maxAttempts) {
         try {

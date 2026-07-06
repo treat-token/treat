@@ -21,12 +21,15 @@ export default function Buy({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
 
-  // Get API keys from environment variables
+  // Get API keys from environment variables - NO HARDCODING!
   const RPC_ENDPOINT = process.env.REACT_APP_ALCHEMY_API_KEY 
     ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.REACT_APP_ALCHEMY_API_KEY}`
     : 'https://api.mainnet-beta.solana.com';
   
-  const DFLOW_API_KEY = process.env.REACT_APP_DFLOW_API_KEY || 'dflow_7sfp9Mfd_sfuhLXdaISiFNc0PaEgPNmtt1TtuSARm';
+  const DFLOW_API_KEY = process.env.REACT_APP_DFLOW_API_KEY;
+
+  // Log API key status (without exposing the key)
+  console.log('🔑 Dflow API Key:', DFLOW_API_KEY ? '✅ Set in environment' : '❌ Missing');
 
   useEffect(() => {
     fetchSolPrice();
@@ -106,6 +109,11 @@ export default function Buy({
 
   // Dflow API Functions
   const getDflowQuote = async (amount) => {
+    // Check if API key is available
+    if (!DFLOW_API_KEY) {
+      throw new Error('Dflow API key is not configured. Please add REACT_APP_DFLOW_API_KEY to environment variables.');
+    }
+
     const url = `${DFLOW_API}/quote`;
     
     console.log('Fetching quote from Dflow...');
@@ -135,6 +143,9 @@ export default function Buy({
       if (response.status === 429) {
         throw new Error('Rate limited. Please wait a moment and try again.');
       }
+      if (response.status === 401) {
+        throw new Error('Invalid Dflow API key. Please check your environment variables.');
+      }
       throw new Error(`Quote error: ${response.status} - ${errorText}`);
     }
 
@@ -149,6 +160,11 @@ export default function Buy({
   };
 
   const getDflowSwap = async (quoteData) => {
+    // Check if API key is available
+    if (!DFLOW_API_KEY) {
+      throw new Error('Dflow API key is not configured. Please add REACT_APP_DFLOW_API_KEY to environment variables.');
+    }
+
     const url = `${DFLOW_API}/swap`;
     
     const response = await fetch(url, {
@@ -171,6 +187,9 @@ export default function Buy({
       
       if (response.status === 429) {
         throw new Error('Rate limited. Please wait a moment and try again.');
+      }
+      if (response.status === 401) {
+        throw new Error('Invalid Dflow API key. Please check your environment variables.');
       }
       throw new Error(`Swap error: ${response.status} - ${errorText}`);
     }
@@ -333,8 +352,8 @@ export default function Buy({
         showToast('❌ Timeout', 'Transaction took too long. Check explorer for status.', 'error');
       } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
         showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
-      } else if (errorMessage.includes('API key') || errorMessage.includes('authorization')) {
-        showToast('❌ API Key Error', 'Invalid or missing Dflow API key', 'error');
+      } else if (errorMessage.includes('API key') || errorMessage.includes('authorization') || errorMessage.includes('not configured')) {
+        showToast('❌ API Key Error', 'Dflow API key is missing or invalid. Please check environment variables.', 'error');
       } else if (errorMessage.includes('insufficient balance')) {
         showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
       } else {

@@ -95,29 +95,39 @@ export default function Buy({
 
     setIsSwapping(true);
     try {
-      // Get swap quote from Jupiter API
-      const quoteResponse = await fetch('https://quote-api.jup.ag/v6/quote', {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-        params: new URLSearchParams({
-          inputMint: 'So11111111111111111111111111111111111111112',
-          outputMint: TREAT_MINT_ADDRESS,
-          amount: Math.floor(amount * 1e9),
-          slippageBps: 50,
-        })
-      });
+      const phantom = window.phantom.solana;
+      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
-      if (!quoteResponse.ok) {
-        throw new Error(`Quote API error: ${quoteResponse.statusText}`);
-      }
-
-      const quoteData = await quoteResponse.json();
-
-      // Get swap transaction
-      const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
+      // 1. Get swap quote from Dflow via backend
+      const quoteResponse = await fetch('/api/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          endpoint: '/quote',
+          inputMint: 'So11111111111111111111111111111111111111112', // SOL
+          outputMint: TREAT_MINT_ADDRESS,
+          amount: Math.floor(amount * 1e9),
+          slippageBps: 50,
+        }),
+      });
+
+      if (!quoteResponse.ok) {
+        const errorData = await quoteResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || `Quote API error: ${quoteResponse.statusText}`);
+      }
+
+      const quoteData = await quoteResponse.json();
+      
+      if (quoteData.error) {
+        throw new Error(quoteData.error);
+      }
+
+      // 2. Get swap transaction from Dflow via backend
+      const swapResponse = await fetch('/api/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: '/swap',
           quoteResponse: quoteData,
           userPublicKey: walletAddress,
           wrapAndUnwrapSol: true,
@@ -125,15 +135,21 @@ export default function Buy({
       });
 
       if (!swapResponse.ok) {
-        throw new Error(`Swap API error: ${swapResponse.statusText}`);
+        const errorData = await swapResponse.json().catch(() => ({}));
+        throw new Error(errorData.error || `Swap API error: ${swapResponse.statusText}`);
       }
 
       const swapData = await swapResponse.json();
+      
+      if (swapData.error) {
+        throw new Error(swapData.error);
+      }
+
+      // 3. Deserialize and send transaction
       const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
       const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
 
-      // Sign and send transaction using Phantom wallet
-      const phantom = window.phantom.solana;
+      // 4. Sign and send transaction using Phantom wallet
       const signedTx = await phantom.signAndSendTransaction(transaction);
 
       showToast('✅ Swap Initiated', `Transaction: ${signedTx.signature.slice(0, 8)}...`, 'success');

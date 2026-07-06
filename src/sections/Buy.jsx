@@ -1,36 +1,27 @@
-import React, { useState } from 'react';
-import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import React, { useState, useEffect } from 'react';
+import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
 
-export default function Buy({ walletConnected, walletAddress, solBalance, treatBalance, treatPrice, showToast }) {
+export default function Buy({ 
+  walletConnected, 
+  walletAddress, 
+  solBalance, 
+  treatBalance, 
+  treatPrice, 
+  showToast 
+}) {
   const [swapInput, setSwapInput] = useState('');
   const [swapOutput, setSwapOutput] = useState('0.0');
   const [usdValue, setUsdValue] = useState('~ $0.00');
   const [isSwapping, setIsSwapping] = useState(false);
+  const [solPrice, setSolPrice] = useState(150);
 
-  const handleSwapInput = async (value) => {
-    setSwapInput(value);
-    if (!value || isNaN(value) || parseFloat(value) <= 0) {
-      setSwapOutput('0.0');
-      setUsdValue('~ $0.00');
-      return;
-    }
-
-    try {
-      const solPrice = await fetchSolPrice();
-      const usd = parseFloat(value) * solPrice;
-      setUsdValue(`~ $${usd.toFixed(2)}`);
-    } catch (error) {
-      console.error('Price calculation error:', error);
-    }
-  };
-
-  const handleMaxClick = () => {
-    setSwapInput(solBalance.toFixed(4));
-    handleSwapInput(solBalance.toFixed(4));
-  };
+  // Fetch SOL price on mount
+  useEffect(() => {
+    fetchSolPrice();
+  }, []);
 
   const fetchSolPrice = async () => {
     try {
@@ -40,19 +31,49 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
         if (data.pairs && data.pairs.length > 0) {
           const pair = data.pairs.find(p => p.baseToken?.symbol === 'SOL');
           if (pair?.priceUsd) {
-            return parseFloat(pair.priceUsd);
+            setSolPrice(parseFloat(pair.priceUsd));
+            return;
           }
         }
       }
     } catch (error) {
       console.warn('SOL price fetch error:', error);
     }
-    return 150;
+    setSolPrice(150);
+  };
+
+  const handleSwapInput = (value) => {
+    setSwapInput(value);
+    if (!value || isNaN(value) || parseFloat(value) <= 0) {
+      setSwapOutput('0.0');
+      setUsdValue('~ $0.00');
+      return;
+    }
+
+    const amount = parseFloat(value);
+    const usd = amount * solPrice;
+    setUsdValue(`~ $${usd.toFixed(2)}`);
+
+    // Calculate output based on treat price
+    if (treatPrice > 0) {
+      const output = amount * (solPrice / treatPrice);
+      setSwapOutput(output.toFixed(4));
+    } else {
+      setSwapOutput('0.0');
+    }
+  };
+
+  const handleMaxClick = () => {
+    if (solBalance > 0) {
+      const value = solBalance.toFixed(4);
+      setSwapInput(value);
+      handleSwapInput(value);
+    }
   };
 
   const handleSwap = async () => {
     if (!walletConnected) {
-      showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
+      showToast('❌ Not Connected', 'Please connect your wallet using the header button', 'error');
       return;
     }
 
@@ -67,37 +88,36 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
       return;
     }
 
+    if (amount > solBalance) {
+      showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
+      return;
+    }
+
     setIsSwapping(true);
     try {
-      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-      const phantom = window.phantom.solana;
-      const userPublicKey = new PublicKey(walletAddress);
-
-      // Get swap quote from Jupiter API via backend
-      const response = await fetch('/api/swap', {
-        method: 'POST',
+      // Get swap quote from Jupiter API
+      const quoteResponse = await fetch('https://quote-api.jup.ag/v6/quote', {
+        method: 'GET',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: '/swap/quote',
+        params: new URLSearchParams({
           inputMint: 'So11111111111111111111111111111111111111112',
           outputMint: TREAT_MINT_ADDRESS,
           amount: Math.floor(amount * 1e9),
           slippageBps: 50,
-        }),
+        })
       });
 
-      if (!response.ok) {
-        throw new Error(`Quote API error: ${response.statusText}`);
+      if (!quoteResponse.ok) {
+        throw new Error(`Quote API error: ${quoteResponse.statusText}`);
       }
 
-      const quoteData = await response.json();
+      const quoteData = await quoteResponse.json();
 
-      // Get swap instruction from Jupiter API via backend
-      const swapResponse = await fetch('/api/swap', {
+      // Get swap transaction
+      const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          endpoint: '/swap',
           quoteResponse: quoteData,
           userPublicKey: walletAddress,
           wrapAndUnwrapSol: true,
@@ -113,12 +133,18 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
       const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
 
       // Sign and send transaction using Phantom wallet
+      const phantom = window.phantom.solana;
       const signedTx = await phantom.signAndSendTransaction(transaction);
 
       showToast('✅ Swap Initiated', `Transaction: ${signedTx.signature.slice(0, 8)}...`, 'success');
       setSwapInput('');
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
+      
+      // Refresh balances after swap
+      if (window.refreshBalances) {
+        window.refreshBalances();
+      }
     } catch (error) {
       console.error('Swap error:', error);
       showToast('❌ Swap Failed', error.message || 'Please try again', 'error');
@@ -139,93 +165,122 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
           Swap <span className="highlight">SOL → TREAT</span>
         </div>
 
-        <div className="swap-box">
-          <div className="swap-label">
-            <span>YOU PAY</span>
-            <span>Balance: {solBalance.toFixed(4)} SOL</span>
-          </div>
-          <div className="swap-input-row">
-            <input
-              type="number"
-              placeholder="0.0"
-              value={swapInput}
-              onChange={(e) => handleSwapInput(e.target.value)}
-              disabled={!walletConnected}
-            />
-            <div className="token-select">
-              <img 
-                src="https://upload.wikimedia.org/wikipedia/commons/9/92/Solana_logo.png" 
-                alt="SOL" 
-              />
-              <span className="token-symbol">SOL</span>
-              <span className="arrow-down">▼</span>
+        {!walletConnected ? (
+          // Show "Connect Wallet" message when not connected
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '3rem 1rem',
+            background: '#121010',
+            borderRadius: '20px',
+            border: '1px solid #1f1a18',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
+            <h3 style={{ color: '#f0ece8', marginBottom: '0.5rem' }}>Wallet Not Connected</h3>
+            <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
+              Please connect your Phantom wallet using the button in the top right corner
+            </p>
+            <div style={{ 
+              marginTop: '1rem',
+              padding: '0.5rem 1rem',
+              background: '#1f1a18',
+              borderRadius: '8px',
+              display: 'inline-block',
+              fontSize: '0.75rem',
+              color: '#6b5f58'
+            }}>
+              Click "BUY TREAT" in header to navigate here after connecting
             </div>
           </div>
-          <div className="balance-info">
-            <span>{usdValue}</span>
-            {walletConnected && (
-              <span className="max-btn" onClick={handleMaxClick}>MAX</span>
-            )}
-          </div>
-        </div>
-
-        <div className="swap-arrow">⇅</div>
-
-        <div className="swap-box">
-          <div className="swap-label">
-            <span>YOU RECEIVE</span>
-            <span>Balance: {treatBalance.toFixed(2)} TREAT</span>
-          </div>
-          <div className="swap-input-row">
-            <input
-              type="number"
-              placeholder="0.0"
-              value={swapOutput}
-              readOnly
-            />
-            <div className="token-select">
-              <img 
-                src="https://i.postimg.cc/d1CJyjt9/treat1727943702621.png" 
-                alt="TREAT" 
-              />
-              <span className="token-symbol">TREAT</span>
-              <span className="arrow-down">▼</span>
+        ) : (
+          // Show swap interface when connected
+          <>
+            <div className="swap-box">
+              <div className="swap-label">
+                <span>YOU PAY</span>
+                <span>Balance: {solBalance.toFixed(4)} SOL</span>
+              </div>
+              <div className="swap-input-row">
+                <input
+                  type="number"
+                  placeholder="0.0"
+                  value={swapInput}
+                  onChange={(e) => handleSwapInput(e.target.value)}
+                />
+                <div className="token-select">
+                  <img 
+                    src="https://upload.wikimedia.org/wikipedia/commons/9/92/Solana_logo.png" 
+                    alt="SOL" 
+                  />
+                  <span className="token-symbol">SOL</span>
+                  <span className="arrow-down">▼</span>
+                </div>
+              </div>
+              <div className="balance-info">
+                <span>{usdValue}</span>
+                <span className="max-btn" onClick={handleMaxClick}>MAX</span>
+              </div>
             </div>
-          </div>
-          <div className="balance-info">
-            <span>~${(parseFloat(swapOutput) * treatPrice).toFixed(2)}</span>
-          </div>
-        </div>
 
-        <button
-          className="swap-btn"
-          onClick={handleSwap}
-          disabled={isSwapping || !swapInput || !walletConnected}
-        >
-          {isSwapping ? (
-            <>
-              <span className="spinner"></span>
-              SWAPPING...
-            </>
-          ) : (
-            'SWAP NOW'
-          )}
-        </button>
+            <div className="swap-arrow">⇅</div>
 
-        <div className="swap-details">
-          <div className="detail-row">
-            <span>Price Impact</span>
-            <span className="value">~0.05%</span>
-          </div>
-          <div className="detail-row">
-            <span>Network Fee</span>
-            <span className="value">~0.00005 SOL</span>
-          </div>
-          <div className="detail-row">
-            <span>Slippage Tolerance</span>
-            <span className="value">0.5%</span>
-          </div>
-        </div>
+            <div className="swap-box">
+              <div className="swap-label">
+                <span>YOU RECEIVE</span>
+                <span>Balance: {treatBalance.toFixed(2)} TREAT</span>
+              </div>
+              <div className="swap-input-row">
+                <input
+                  type="number"
+                  placeholder="0.0"
+                  value={swapOutput}
+                  readOnly
+                />
+                <div className="token-select">
+                  <img 
+                    src="https://i.postimg.cc/d1CJyjt9/treat1727943702621.png" 
+                    alt="TREAT" 
+                  />
+                  <span className="token-symbol">TREAT</span>
+                  <span className="arrow-down">▼</span>
+                </div>
+              </div>
+              <div className="balance-info">
+                <span>~${(parseFloat(swapOutput) * treatPrice).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button
+              className="swap-btn"
+              onClick={handleSwap}
+              disabled={isSwapping || !swapInput || parseFloat(swapInput) <= 0}
+            >
+              {isSwapping ? (
+                <>
+                  <span className="spinner"></span>
+                  SWAPPING...
+                </>
+              ) : (
+                'SWAP NOW'
+              )}
+            </button>
+
+            <div className="swap-details">
+              <div className="detail-row">
+                <span>Price Impact</span>
+                <span className="value">~0.05%</span>
+              </div>
+              <div className="detail-row">
+                <span>Network Fee</span>
+                <span className="value">~0.00005 SOL</span>
+              </div>
+              <div className="detail-row">
+                <span>Slippage Tolerance</span>
+                <span className="value">0.5%</span>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#121010', borderRadius: '16px', border: '1px solid #1f1a18' }}>

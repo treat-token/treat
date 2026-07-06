@@ -2030,10 +2030,15 @@
 
         async function fetchSolPrice() {
             try {
-                const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd');
+                const response = await fetch('https://api.dexscreener.com/latest/dex/search?q=SOL');
                 if (response.ok) {
                     const data = await response.json();
-                    return data.solana.usd || 150;
+                    if (data.pairs && data.pairs.length > 0) {
+                        const pair = data.pairs.find(p => p.baseToken && p.baseToken.symbol === 'SOL');
+                        if (pair && pair.priceUsd) {
+                            return parseFloat(pair.priceUsd);
+                        }
+                    }
                 }
             } catch (error) {
                 console.warn('SOL price fetch error:', error);
@@ -2059,8 +2064,13 @@
             if (!window.solana || !walletConnected) return;
 
             try {
-                // Get SOL balance using Phantom
-                const lamports = await window.solana.getBalance();
+                // Get SOL balance using Solana connection
+                const connection = new window.solanaWeb3.Connection(
+                    'https://api.mainnet-beta.solana.com',
+                    'confirmed'
+                );
+
+                const lamports = await connection.getBalance(window.solana.publicKey);
                 solBalance = lamports / 1e9;
                 document.getElementById('solBalance').textContent = solBalance.toFixed(4);
                 console.log('SOL Balance:', solBalance);
@@ -2215,19 +2225,17 @@
                 );
 
                 if (!quoteResponse.ok) {
-                    throw new Error('Failed to get Jupiter quote');
+                    throw new Error('Failed to get Jupiter quote: ' + quoteResponse.statusText);
                 }
 
                 const quoteData = await quoteResponse.json();
 
-                if (!quoteData.data || quoteData.data.length === 0) {
-                    throw new Error('No swap route found');
+                if (!quoteData || !quoteData.outAmount) {
+                    throw new Error('Invalid quote response: ' + JSON.stringify(quoteData));
                 }
 
-                const route = quoteData.data[0];
-                const expectedOutput = parseInt(route.outAmount) / 1e6; // TREAT has 6 decimals
-
-                console.log('Got quote:', route);
+                const expectedOutput = parseInt(quoteData.outAmount) / 1e6;
+                console.log('Got quote:', quoteData, 'Expected output:', expectedOutput);
 
                 // Get swap instruction from Jupiter
                 const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
@@ -2236,14 +2244,14 @@
                         'Content-Type': 'application/json',
                     },
                     body: JSON.stringify({
-                        quoteResponse: route,
+                        quoteResponse: quoteData,
                         userPublicKey: walletAddress,
                         wrapUnwrapSOL: true,
                     })
                 });
 
                 if (!swapResponse.ok) {
-                    throw new Error('Failed to get swap instruction');
+                    throw new Error('Failed to get swap instruction: ' + swapResponse.statusText);
                 }
 
                 const swapData = await swapResponse.json();

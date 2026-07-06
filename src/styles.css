@@ -847,6 +847,69 @@ body {
   padding: 0.2rem 0;
 }
 
+/* Buy Header with Wallet Controls */
+.buy-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.buy-header .section-header {
+  flex: 1;
+  min-width: 300px;
+}
+
+.wallet-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  font-size: 0.85rem;
+}
+
+.wallet-controls .wallet-status {
+  color: #14F195;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  background: rgba(20, 241, 149, 0.1);
+  border-radius: 20px;
+  border: 1px solid rgba(20, 241, 149, 0.3);
+}
+
+.connect-wallet-btn,
+.disconnect-btn {
+  padding: 0.6rem 1.2rem;
+  border-radius: 20px;
+  border: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  font-family: inherit;
+}
+
+.connect-wallet-btn {
+  background: linear-gradient(135deg, #14F195, #0cb87a);
+  color: #0a0a0a;
+}
+
+.connect-wallet-btn:hover {
+  transform: scale(1.05);
+  box-shadow: 0 0 20px rgba(20, 241, 149, 0.3);
+}
+
+.disconnect-btn {
+  background: #2a2220;
+  color: #f0ece8;
+  border: 1px solid #1f1a18;
+}
+
+.disconnect-btn:hover {
+  border-color: #6b5f58;
+}
+
 /* Connect Wallet Button */
 .swap-card .connect-btn {
   width: 100%;

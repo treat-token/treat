@@ -26,24 +26,6 @@ export default function Header({ activeSection, onNavigate, walletConnected, wal
         </a>
 
         <div className="nav-right">
-          <div className="header-wallet-status">
-            {walletConnected ? (
-              <>
-                <span className={`status-dot ${walletConnected ? 'connected' : ''}`}></span>
-                <span className="wallet-addr">
-                  {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`}
-                </span>
-                <button className="disconnect-btn" onClick={onDisconnect}>
-                  Disconnect
-                </button>
-              </>
-            ) : (
-              <button className="connect-wallet-btn" onClick={onConnect}>
-                Connect Wallet
-              </button>
-            )}
-          </div>
-
           <button className="cta" onClick={() => handleNavigate('buy')}>
             BUY TREAT
           </button>

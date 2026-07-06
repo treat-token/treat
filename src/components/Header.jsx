@@ -10,6 +10,13 @@ export default function Header({ activeSection, onNavigate, walletConnected, wal
     setDropdownOpen(false);
   };
 
+  const handleBuyTreat = async () => {
+    if (!walletConnected) {
+      await onConnect();
+    }
+    handleNavigate('buy');
+  };
+
   return (
     <header className="header">
       <div className="header-inner">
@@ -26,25 +33,19 @@ export default function Header({ activeSection, onNavigate, walletConnected, wal
         </a>
 
         <div className="nav-right">
-          <div className="header-wallet-status">
-            {walletConnected ? (
-              <>
-                <span className={`status-dot ${walletConnected ? 'connected' : ''}`}></span>
-                <span className="wallet-addr">
-                  {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`}
-                </span>
-                <button className="disconnect-btn" onClick={onDisconnect}>
-                  Disconnect
-                </button>
-              </>
-            ) : (
-              <button className="connect-wallet-btn" onClick={onConnect}>
-                Connect Wallet
+          {walletConnected && (
+            <div className="header-wallet-status">
+              <span className={`status-dot ${walletConnected ? 'connected' : ''}`}></span>
+              <span className="wallet-addr">
+                {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`}
+              </span>
+              <button className="disconnect-btn" onClick={onDisconnect}>
+                Disconnect
               </button>
-            )}
-          </div>
+            </div>
+          )}
 
-          <button className="cta" onClick={() => handleNavigate('buy')}>
+          <button className="cta" onClick={handleBuyTreat}>
             BUY TREAT
           </button>
 

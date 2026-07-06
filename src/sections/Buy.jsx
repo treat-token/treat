@@ -128,11 +128,11 @@ export default function Buy({
       const phantom = window.phantom.solana;
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
-      console.log('🔄 Starting Dflow swap...');
+      console.log('🔄 Starting swap with Phantom...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
 
-      // 1. Get swap quote from Dflow via backend
+      // Get swap quote from Dflow via backend
       const quoteResponse = await fetch('/api/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -144,8 +144,6 @@ export default function Buy({
           slippageBps: 50,
         }),
       });
-
-      console.log('Quote response status:', quoteResponse.status);
 
       if (!quoteResponse.ok) {
         const errorText = await quoteResponse.text();
@@ -165,7 +163,7 @@ export default function Buy({
         throw new Error(quoteData.error);
       }
 
-      // 2. Get swap transaction from Dflow via backend
+      // Get swap transaction from Dflow via backend
       const swapResponse = await fetch('/api/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -176,8 +174,6 @@ export default function Buy({
           wrapAndUnwrapSol: true,
         }),
       });
-
-      console.log('Swap response status:', swapResponse.status);
 
       if (!swapResponse.ok) {
         const errorText = await swapResponse.text();
@@ -201,14 +197,27 @@ export default function Buy({
         throw new Error('No swap transaction received from Dflow');
       }
 
-      // 3. Deserialize and send transaction
+      // Deserialize the transaction
       const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
       const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
 
-      // 4. Sign and send transaction using Phantom wallet
-      const signedTx = await phantom.signAndSendTransaction(transaction);
+      // ===== DIRECT PHANTOM WALLET SIGN & SEND =====
+      console.log('📝 Requesting Phantom to sign and send transaction...');
+      
+      // Use Phantom's native signAndSendTransaction
+      const { signature } = await phantom.signAndSendTransaction(transaction);
+      
+      console.log('✅ Transaction sent! Signature:', signature);
 
-      showToast('✅ Swap Initiated', `Transaction: ${signedTx.signature.slice(0, 8)}...`, 'success');
+      // Wait for confirmation
+      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
+      console.log('✅ Transaction confirmed:', confirmation);
+
+      showToast('✅ Swap Complete!', 
+        `Transaction: ${signature.slice(0, 8)}...${signature.slice(-8)}`, 
+        'success'
+      );
+      
       setSwapInput('');
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
@@ -219,7 +228,13 @@ export default function Buy({
       }
     } catch (error) {
       console.error('Swap error:', error);
-      showToast('❌ Swap Failed', error.message || 'Please try again', 'error');
+      
+      // Handle user rejection
+      if (error.code === 4001 || error.message?.includes('User rejected')) {
+        showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
+      } else {
+        showToast('❌ Swap Failed', error.message || 'Please try again', 'error');
+      }
     } finally {
       setIsSwapping(false);
     }

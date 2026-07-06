@@ -7,14 +7,14 @@ zone_id = ""
 
 [vars]
 DFLOW_API_KEY = "REPLACE_ENV.DFLOW_API_KEY"
-ALCHEMY_API_KEY = "REPLACE_ENV.ALCHEMY_API_KEY"
+ALCHEMY_API_KEY = "k5jwTvMDFEvbPGj5yreGA"
 
 [env.production]
 name = "treat-token-app-prod"
 routes = [
   { pattern = "example.com/*", zone_name = "example.com" }
 ]
-vars = { DFLOW_API_KEY = "REPLACE_ENV.DFLOW_API_KEY", ALCHEMY_API_KEY = "REPLACE_ENV.ALCHEMY_API_KEY" }
+vars = { DFLOW_API_KEY = "REPLACE_ENV.DFLOW_API_KEY", ALCHEMY_API_KEY = "k5jwTvMDFEvbPGj5yreGA" }
 
 [build]
 command = "npm run build"

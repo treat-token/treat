@@ -1337,6 +1337,115 @@
             .card { padding: 1rem; }
             .swap-card .swap-box .swap-input-row input { font-size: 0.9rem; }
         }
+
+        /* ===== SWAP CONFIRMATION MODAL ===== */
+        .swap-confirm-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 9999;
+            align-items: center;
+            justify-content: center;
+            backdrop-filter: blur(8px);
+        }
+
+        .swap-confirm-modal.show {
+            display: flex;
+        }
+
+        .swap-confirm-modal-content {
+            background: #1a1614;
+            border-radius: 24px;
+            padding: 2.5rem;
+            max-width: 440px;
+            width: 90%;
+            border: 1px solid #2a2220;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9);
+        }
+
+        .swap-confirm-modal-title {
+            color: #f0ece8;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .swap-confirm-modal-details {
+            margin-bottom: 1.5rem;
+        }
+
+        .swap-confirm-modal-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid #1f1a18;
+        }
+
+        .swap-confirm-modal-row .label {
+            color: #6b5f58;
+        }
+
+        .swap-confirm-modal-row .value {
+            color: #f0ece8;
+            font-weight: 600;
+        }
+
+        .swap-confirm-modal-row .value.amount-receive {
+            color: #14F195;
+        }
+
+        .swap-confirm-modal-row .value.rate {
+            color: #a89890;
+        }
+
+        .swap-confirm-modal-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .swap-confirm-modal-buttons button {
+            flex: 1;
+            padding: 0.8rem;
+            border-radius: 40px;
+            color: #a89890;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: inherit;
+            border: 1px solid #2a2220;
+        }
+
+        .swap-confirm-modal-buttons .cancel-btn {
+            background: #1f1a18;
+            color: #a89890;
+        }
+
+        .swap-confirm-modal-buttons .cancel-btn:hover {
+            background: #2a2220;
+        }
+
+        .swap-confirm-modal-buttons .confirm-btn {
+            flex: 2;
+            background: linear-gradient(135deg, #9945FF, #7a2be0);
+            border: none;
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .swap-confirm-modal-buttons .confirm-btn:hover {
+            transform: scale(1.02);
+            box-shadow: 0 0 30px rgba(153, 69, 255, 0.3);
+        }
+
+        .swap-confirm-modal-buttons .confirm-btn:active {
+            transform: scale(0.98);
+        }
     </style>
 </head>
 <body>

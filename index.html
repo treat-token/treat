@@ -1960,18 +1960,20 @@
                 let change24h = 0;
                 let marketCap = 0;
 
-                // Try DexScreener API
+                // Try DexScreener API with Solana contract address
                 try {
                     const response = await fetch(
-                        'https://api.dexscreener.com/latest/dex/search?q=TREAT'
+                        'https://api.dexscreener.com/latest/dex/tokens/' + TREAT_MINT_ADDRESS
                     );
                     if (response.ok) {
                         const data = await response.json();
                         if (data.pairs && data.pairs.length > 0) {
-                            const pair = data.pairs[0];
-                            price = parseFloat(pair.priceUsd) || 0.001;
-                            change24h = parseFloat(pair.priceChange.h24) || 0;
-                            marketCap = parseFloat(pair.fdv) || 0;
+                            const solanaPair = data.pairs.find(p => p.chainId === 'solana') || data.pairs[0];
+                            if (solanaPair) {
+                                price = parseFloat(solanaPair.priceUsd) || 0.001;
+                                change24h = parseFloat(solanaPair.priceChange.h24) || 0;
+                                marketCap = parseFloat(solanaPair.fdv) || 0;
+                            }
                         }
                     }
                 } catch (dexError) {
@@ -2062,6 +2064,8 @@
         // ===== FETCH BALANCES =====
         async function fetchBalances() {
             if (!window.solana || !walletConnected) return;
+
+            await waitForLibraries();
 
             try {
                 // Get SOL balance using Solana connection
@@ -2155,6 +2159,8 @@
                 showToast('⚠️ Wallet Required', 'Please connect your wallet first', 'error');
                 return;
             }
+
+            await waitForLibraries();
 
             const inputAmount = parseFloat(document.getElementById('swapInput').value);
             if (isNaN(inputAmount) || inputAmount <= 0) {
@@ -2291,22 +2297,53 @@
         }
 
         // ===== LOAD REQUIRED LIBRARIES =====
-        // Load Buffer for transaction encoding/decoding
-        const bufferScript = document.createElement('script');
-        bufferScript.src = 'https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js';
-        bufferScript.onload = function() {
-            console.log('Buffer library loaded');
-            window.Buffer = window.Buffer || globalThis.Buffer;
-        };
-        document.head.appendChild(bufferScript);
+        let librariesReady = false;
 
-        const script = document.createElement('script');
-        script.src = 'https://unpkg.com/@solana/web3.js@1.87.0/lib/index.iife.js';
-        script.onload = function() {
-            console.log('Solana Web3 loaded');
-            window.solanaWeb3 = window.solanaWeb3 || window.SolanaWeb3;
-        };
-        document.head.appendChild(script);
+        function initializeLibraries() {
+            // Load Buffer for transaction encoding/decoding
+            const bufferScript = document.createElement('script');
+            bufferScript.src = 'https://cdn.jsdelivr.net/npm/buffer@6.0.3/index.min.js';
+            bufferScript.onload = function() {
+                console.log('Buffer library loaded');
+                window.Buffer = window.Buffer || globalThis.Buffer;
+                checkLibrariesReady();
+            };
+            document.head.appendChild(bufferScript);
+
+            const solanaScript = document.createElement('script');
+            solanaScript.src = 'https://unpkg.com/@solana/web3.js@1.87.0/lib/index.iife.js';
+            solanaScript.onload = function() {
+                console.log('Solana Web3 loaded');
+                window.solanaWeb3 = window.solanaWeb3 || window.SolanaWeb3;
+                checkLibrariesReady();
+            };
+            document.head.appendChild(solanaScript);
+        }
+
+        function checkLibrariesReady() {
+            if (window.Buffer && window.solanaWeb3) {
+                librariesReady = true;
+                console.log('All libraries ready');
+            }
+        }
+
+        function waitForLibraries() {
+            return new Promise((resolve) => {
+                if (librariesReady) {
+                    resolve();
+                } else {
+                    const checkInterval = setInterval(() => {
+                        if (librariesReady) {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 100);
+                    setTimeout(() => clearInterval(checkInterval), 10000);
+                }
+            });
+        }
+
+        initializeLibraries();
 
         // ===== SET DEFAULT =====
         document.addEventListener('DOMContentLoaded', function() {

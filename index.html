@@ -1932,9 +1932,6 @@
                     console.log('Wallet disconnected');
                     walletConnected = false;
                     updateHeaderStatus(false);
-                    const btn = document.getElementById('connectWalletBtn');
-                    btn.classList.remove('connected');
-                    btn.innerHTML = '🔗 CONNECT PHANTOM WALLET';
                     document.getElementById('swapBtn').disabled = true;
                 });
             }
@@ -1987,11 +1984,6 @@
             // Update header
             updateHeaderStatus(true);
 
-            // Update swap button
-            const btn = document.getElementById('connectWalletBtn');
-            btn.classList.add('connected');
-            btn.textContent = '✅ CONNECTED - ' + walletAddress.slice(0, 6) + '...' + walletAddress.slice(-6);
-
             document.getElementById('swapBtn').disabled = false;
 
             await fetchBalances();
@@ -2008,8 +2000,6 @@
             walletConnected = false;
             walletAddress = '';
             updateHeaderStatus(false);
-            document.getElementById('connectWalletBtn').innerHTML = '🔗 CONNECT PHANTOM WALLET';
-            document.getElementById('connectWalletBtn').classList.remove('connected');
             document.getElementById('swapBtn').disabled = true;
             document.getElementById('solBalance').textContent = '0.00';
             document.getElementById('treatBalance').textContent = '0.00';

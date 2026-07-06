@@ -161,32 +161,20 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
           </div>
         </div>
 
-        {!walletConnected ? (
-          <button className="connect-btn" disabled>
-            🔗 CONNECT PHANTOM WALLET
-          </button>
-        ) : (
-          <>
-            <button className="connect-btn connected">
-              ✅ CONNECTED
-              <span className="wallet-address">{walletAddress.slice(0, 6)}...{walletAddress.slice(-6)}</span>
-            </button>
-            <button 
-              className="swap-btn"
-              onClick={handleSwap}
-              disabled={isSwapping || !swapInput}
-            >
-              {isSwapping ? (
-                <>
-                  <span className="spinner"></span>
-                  SWAPPING...
-                </>
-              ) : (
-                'SWAP NOW'
-              )}
-            </button>
-          </>
-        )}
+        <button
+          className="swap-btn"
+          onClick={handleSwap}
+          disabled={isSwapping || !swapInput || !walletConnected}
+        >
+          {isSwapping ? (
+            <>
+              <span className="spinner"></span>
+              SWAPPING...
+            </>
+          ) : (
+            'SWAP NOW'
+          )}
+        </button>
 
         <div className="swap-details">
           <div className="detail-row">

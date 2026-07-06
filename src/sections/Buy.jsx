@@ -3,7 +3,6 @@ import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
-const DFLOW_API = 'https://api.dflow.net/v1';
 
 export default function Buy({ 
   walletConnected, 
@@ -21,15 +20,10 @@ export default function Buy({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
 
-  // Get API keys from environment variables - NO HARDCODING!
+  // Use Cloudflare proxy endpoint
   const RPC_ENDPOINT = process.env.REACT_APP_ALCHEMY_API_KEY 
     ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.REACT_APP_ALCHEMY_API_KEY}`
     : 'https://api.mainnet-beta.solana.com';
-  
-  const DFLOW_API_KEY = process.env.REACT_APP_DFLOW_API_KEY;
-
-  // Log API key status (without exposing the key)
-  console.log('🔑 Dflow API Key:', DFLOW_API_KEY ? '✅ Set in environment' : '❌ Missing');
 
   useEffect(() => {
     fetchSolPrice();
@@ -107,49 +101,40 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
-  // Dflow API Functions
-  const getDflowQuote = async (amount) => {
-    // Check if API key is available
-    if (!DFLOW_API_KEY) {
-      throw new Error('Dflow API key is not configured. Please add REACT_APP_DFLOW_API_KEY to environment variables.');
-    }
-
-    const url = `${DFLOW_API}/quote`;
-    
-    console.log('Fetching quote from Dflow...');
-    console.log('From:', SOL_MINT);
-    console.log('To:', TREAT_MINT_ADDRESS);
-    console.log('Amount:', amount);
-    
-    const response = await fetch(url, {
+  // Dflow API Functions using proxy
+  const callDflowApi = async (endpoint, data) => {
+    const response = await fetch('/api/dflow', {
       method: 'POST',
       headers: {
-        'Accept': 'application/json',
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DFLOW_API_KEY}`,
       },
       body: JSON.stringify({
-        from: SOL_MINT,
-        to: TREAT_MINT_ADDRESS,
-        amount: amount.toString(),
-        slippage: 0.5,
+        endpoint: endpoint,
+        data: data
       })
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Dflow quote error:', errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Rate limited. Please wait a moment and try again.');
-      }
-      if (response.status === 401) {
-        throw new Error('Invalid Dflow API key. Please check your environment variables.');
-      }
-      throw new Error(`Quote error: ${response.status} - ${errorText}`);
+      const errorData = await response.json();
+      throw new Error(errorData.error || `API error: ${response.status}`);
     }
 
-    const data = await response.json();
+    return await response.json();
+  };
+
+  const getDflowQuote = async (amount) => {
+    console.log('Fetching quote from Dflow via proxy...');
+    console.log('From:', SOL_MINT);
+    console.log('To:', TREAT_MINT_ADDRESS);
+    console.log('Amount:', amount);
+    
+    const data = await callDflowApi('quote', {
+      from: SOL_MINT,
+      to: TREAT_MINT_ADDRESS,
+      amount: amount.toString(),
+      slippage: 0.5,
+    });
+
     console.log('✅ Quote received:', data);
     
     if (!data || !data.quote) {
@@ -160,41 +145,12 @@ export default function Buy({
   };
 
   const getDflowSwap = async (quoteData) => {
-    // Check if API key is available
-    if (!DFLOW_API_KEY) {
-      throw new Error('Dflow API key is not configured. Please add REACT_APP_DFLOW_API_KEY to environment variables.');
-    }
-
-    const url = `${DFLOW_API}/swap`;
-    
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DFLOW_API_KEY}`,
-      },
-      body: JSON.stringify({
-        quote: quoteData.quote,
-        wallet: walletAddress,
-        slippage: 0.5,
-      })
+    const data = await callDflowApi('swap', {
+      quote: quoteData.quote,
+      wallet: walletAddress,
+      slippage: 0.5,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Dflow swap error:', errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Rate limited. Please wait a moment and try again.');
-      }
-      if (response.status === 401) {
-        throw new Error('Invalid Dflow API key. Please check your environment variables.');
-      }
-      throw new Error(`Swap error: ${response.status} - ${errorText}`);
-    }
-
-    const data = await response.json();
     console.log('✅ Swap transaction received');
     return data;
   };
@@ -231,7 +187,6 @@ export default function Buy({
       console.log('🔄 Starting swap with Dflow...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
-      console.log('Using RPC:', RPC_ENDPOINT.substring(0, 50) + '...');
 
       // Convert SOL to lamports (1 SOL = 1e9 lamports)
       const amountInLamports = Math.floor(amount * 1e9);
@@ -244,7 +199,7 @@ export default function Buy({
         
         // Update output with actual quote
         if (quoteData.quote && quoteData.quote.outAmount) {
-          const outAmount = parseFloat(quoteData.quote.outAmount) / 1e6; // Adjust decimals for TREAT
+          const outAmount = parseFloat(quoteData.quote.outAmount) / 1e6;
           setSwapOutput(outAmount.toFixed(4));
         }
       } catch (quoteError) {
@@ -317,7 +272,6 @@ export default function Buy({
         throw new Error('Transaction confirmation timeout. Check explorer for status.');
       }
 
-      // 6. Get the actual output amount
       const outputAmount = swapData.outAmount 
         ? parseFloat(swapData.outAmount) / 1e6 
         : parseFloat(swapOutput);
@@ -332,7 +286,6 @@ export default function Buy({
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
 
-      // Refresh balances
       if (window.refreshBalances) {
         setTimeout(async () => {
           await window.refreshBalances();
@@ -346,16 +299,12 @@ export default function Buy({
       
       if (errorMessage.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
-      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
+      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity')) {
         showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
       } else if (errorMessage.includes('timeout')) {
         showToast('❌ Timeout', 'Transaction took too long. Check explorer for status.', 'error');
       } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
         showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
-      } else if (errorMessage.includes('API key') || errorMessage.includes('authorization') || errorMessage.includes('not configured')) {
-        showToast('❌ API Key Error', 'Dflow API key is missing or invalid. Please check environment variables.', 'error');
-      } else if (errorMessage.includes('insufficient balance')) {
-        showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }
@@ -390,17 +339,6 @@ export default function Buy({
             <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
               Please connect your Phantom wallet using the button in the top right corner
             </p>
-            <div style={{ 
-              marginTop: '1rem',
-              padding: '0.5rem 1rem',
-              background: '#1f1a18',
-              borderRadius: '8px',
-              display: 'inline-block',
-              fontSize: '0.75rem',
-              color: '#6b5f58'
-            }}>
-              Click "BUY TREAT" in header to navigate here after connecting
-            </div>
           </div>
         ) : (
           <>
@@ -422,7 +360,6 @@ export default function Buy({
                     alt="SOL"
                   />
                   <span className="token-symbol">SOL</span>
-                  <span className="arrow-down">▼</span>
                 </div>
               </div>
               <div className="balance-info">
@@ -451,7 +388,6 @@ export default function Buy({
                     alt="TREAT" 
                   />
                   <span className="token-symbol">TREAT</span>
-                  <span className="arrow-down">▼</span>
                 </div>
               </div>
               <div className="balance-info">
@@ -560,10 +496,7 @@ export default function Buy({
                   fontSize: '0.9rem',
                   fontWeight: 600,
                   cursor: 'pointer',
-                  transition: 'all 0.3s ease'
                 }}
-                onMouseEnter={(e) => e.target.style.background = '#2a2220'}
-                onMouseLeave={(e) => e.target.style.background = '#1f1a18'}
               >
                 Cancel
               </button>
@@ -579,10 +512,7 @@ export default function Buy({
                   fontSize: '0.9rem',
                   fontWeight: 700,
                   cursor: 'pointer',
-                  transition: 'all 0.3s ease'
                 }}
-                onMouseEnter={(e) => e.target.style.transform = 'scale(1.02)'}
-                onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
               >
                 Confirm Swap
               </button>

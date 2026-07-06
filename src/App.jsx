@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
 import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
-import { clusterApiUrl, Connection, PublicKey } from '@solana/web3.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 import Header from './components/Header';
 import Home from './sections/Home';
 import About from './sections/About';
@@ -14,45 +14,15 @@ import Buy from './sections/Buy';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 
-// Use a custom RPC endpoint that goes through our Cloudflare Function
-const ENDPOINT = '/api/rpc'; // This will be handled by Cloudflare Functions
+const NETWORK = WalletAdapterNetwork.Mainnet;
+// Use Alchemy RPC - hardcode for now, move to env later
+const ALCHEMY_API_KEY = 'k5jwTvMDFEvbPGj5yreGA';
+const ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
+console.log('Using RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
+
 const wallets = [new PhantomWalletAdapter()];
-
-// Custom Connection that uses our proxy
-class ProxyConnection extends Connection {
-  constructor() {
-    super(ENDPOINT);
-    // Override the _rpcRequest method to use our proxy
-    this._rpcRequest = async (method, args) => {
-      const body = {
-        jsonrpc: '2.0',
-        id: 1,
-        method: method,
-        params: args,
-      };
-
-      const response = await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-
-      if (!response.ok) {
-        throw new Error(`RPC request failed: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      if (data.error) {
-        throw new Error(data.error.message || 'RPC error');
-      }
-      return data.result;
-    };
-  }
-}
 
 function AppContent() {
   const [activeSection, setActiveSection] = useState('home');
@@ -159,7 +129,7 @@ function AppContent() {
     const pubKey = new PublicKey(pubKeyStr);
     
     try {
-      const connection = new ProxyConnection();
+      const connection = new Connection(ENDPOINT, 'confirmed');
 
       // Fetch SOL balance
       try {

@@ -1893,6 +1893,7 @@
 
         const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
         const CORS_PROXY = 'https://cors-anywhere.herokuapp.com/';
+        const DFLOW_API_KEY = 'YOUR_DFLOW_API_KEY_HERE'; // Add your DFLOW API key here
 
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('treatMintAddress').textContent = TREAT_MINT_ADDRESS;
@@ -2266,16 +2267,33 @@
 
         async function performDflowSwap(amountInSol) {
             try {
+                if (!DFLOW_API_KEY || DFLOW_API_KEY === 'YOUR_DFLOW_API_KEY_HERE') {
+                    throw new Error('DFLOW API key is not configured. Please add your DFLOW API key to the configuration.');
+                }
+
                 const amountInLamports = Math.floor(amountInSol * 1e9);
                 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
-                // Get swap quote from Jupiter
+                // Get swap quote from DFLOW
                 const quoteResponse = await fetch(
-                    `https://quote-api.jup.ag/v6/quote?inputMint=${SOL_MINT}&outputMint=${TREAT_MINT_ADDRESS}&amount=${amountInLamports}&slippageBps=50`
+                    'https://api.dflow.io/v1/swap/quote',
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-API-Key': DFLOW_API_KEY,
+                        },
+                        body: JSON.stringify({
+                            inputMint: SOL_MINT,
+                            outputMint: TREAT_MINT_ADDRESS,
+                            amount: amountInLamports,
+                            slippageBps: 50,
+                        })
+                    }
                 );
 
                 if (!quoteResponse.ok) {
-                    throw new Error('Failed to get Jupiter quote: ' + quoteResponse.statusText);
+                    throw new Error('Failed to get DFLOW quote: ' + quoteResponse.statusText);
                 }
 
                 const quoteData = await quoteResponse.json();
@@ -2287,11 +2305,12 @@
                 const expectedOutput = parseInt(quoteData.outAmount) / 1e6;
                 console.log('Got quote:', quoteData, 'Expected output:', expectedOutput);
 
-                // Get swap instruction from Jupiter
-                const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
+                // Get swap instruction from DFLOW
+                const swapResponse = await fetch('https://api.dflow.io/v1/swap/execute', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-API-Key': DFLOW_API_KEY,
                     },
                     body: JSON.stringify({
                         quoteResponse: quoteData,
@@ -2308,7 +2327,7 @@
                 const transaction = swapData.swapTransaction;
 
                 if (!transaction) {
-                    throw new Error('No transaction returned from Jupiter');
+                    throw new Error('No transaction returned from DFLOW');
                 }
 
                 // Decode transaction

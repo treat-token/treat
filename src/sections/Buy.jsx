@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
-const RPC_ENDPOINT = 'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA';
+const JUPITER_API = 'https://quote-api.jup.ag/v6';
 
 export default function Buy({ 
   walletConnected, 
@@ -19,6 +19,13 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
+
+  // Get API keys from environment variables
+  const RPC_ENDPOINT = process.env.REACT_APP_ALCHEMY_API_KEY 
+    ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.REACT_APP_ALCHEMY_API_KEY}`
+    : 'https://api.mainnet-beta.solana.com';
+  
+  const JUPITER_API_KEY = process.env.REACT_APP_JUPITER_API_KEY || process.env.JUPITER_API_KEY;
 
   useEffect(() => {
     fetchSolPrice();
@@ -96,6 +103,81 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
+  const getJupiterQuote = async (amount) => {
+    const url = `${JUPITER_API}/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${TREAT_MINT_ADDRESS}&amount=${amount}&slippageBps=50`;
+    
+    console.log('Fetching quote from Jupiter...');
+    
+    const headers = {
+      'Accept': 'application/json',
+    };
+    
+    // Add API key if available
+    if (JUPITER_API_KEY) {
+      headers['x-api-key'] = JUPITER_API_KEY;
+    }
+    
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: headers,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Quote API error response:', errorText);
+      
+      if (response.status === 429) {
+        throw new Error('Rate limited. Please wait a moment and try again.');
+      }
+      throw new Error(`Quote API error: ${response.status} ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    
+    if (!data || !data.routePlan) {
+      console.error('Invalid quote response:', data);
+      throw new Error('No route found for swap - token might not have liquidity');
+    }
+
+    return data;
+  };
+
+  const getJupiterSwap = async (quoteResponse) => {
+    const headers = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
+    
+    // Add API key if available
+    if (JUPITER_API_KEY) {
+      headers['x-api-key'] = JUPITER_API_KEY;
+    }
+    
+    const response = await fetch(`${JUPITER_API}/swap`, {
+      method: 'POST',
+      headers: headers,
+      body: JSON.stringify({
+        quoteResponse: quoteResponse,
+        userPublicKey: walletAddress,
+        wrapAndUnwrapSol: true,
+        dynamicComputeUnitLimit: true,
+        prioritizationFeeLamports: 'auto'
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Swap API error response:', errorText);
+      
+      if (response.status === 429) {
+        throw new Error('Rate limited. Please wait a moment and try again.');
+      }
+      throw new Error(`Swap API error: ${response.status} ${response.statusText}`);
+    }
+
+    return await response.json();
+  };
+
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
@@ -124,55 +206,38 @@ export default function Buy({
     try {
       const phantom = window.phantom.solana;
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-      const wallet = new PublicKey(walletAddress);
-
+      
       console.log('🔄 Starting swap with Jupiter...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
+      console.log('Using RPC:', RPC_ENDPOINT.substring(0, 50) + '...');
 
-      // 1. Get Jupiter quote
-      const quoteResponse = await fetch(
-        `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${TREAT_MINT_ADDRESS}&amount=${Math.floor(amount * 1e9)}&slippageBps=50`
-      );
-
-      if (!quoteResponse.ok) {
-        throw new Error('Failed to get quote');
-      }
-
-      const quoteData = await quoteResponse.json();
+      // Convert SOL to lamports (1 SOL = 1e9 lamports)
+      const amountInLamports = Math.floor(amount * 1e9);
       
-      if (!quoteData || !quoteData.routePlan) {
-        throw new Error('No route found for swap');
+      // 1. Get quote from Jupiter
+      let quoteData;
+      try {
+        quoteData = await getJupiterQuote(amountInLamports);
+        console.log('📊 Quote received:', quoteData);
+      } catch (quoteError) {
+        console.error('Quote error:', quoteError);
+        throw new Error('Could not get swap quote. Make sure TREAT token has liquidity on Solana DEXs.');
       }
-
-      console.log('📊 Quote received:', quoteData);
 
       // 2. Get swap transaction
-      const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          quoteResponse: quoteData,
-          userPublicKey: walletAddress,
-          wrapAndUnwrapSol: true,
-          dynamicComputeUnitLimit: true,
-          prioritizationFeeLamports: 'auto'
-        })
-      });
-
-      if (!swapResponse.ok) {
-        throw new Error('Failed to get swap transaction');
+      let swapData;
+      try {
+        swapData = await getJupiterSwap(quoteData);
+        console.log('📝 Swap transaction received');
+      } catch (swapError) {
+        console.error('Swap transaction error:', swapError);
+        throw new Error('Could not create swap transaction');
       }
 
-      const swapData = await swapResponse.json();
-      
       if (!swapData || !swapData.swapTransaction) {
-        throw new Error('No swap transaction received');
+        throw new Error('No swap transaction received from Jupiter');
       }
-
-      console.log('📝 Swap transaction received');
 
       // 3. Deserialize the transaction
       const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
@@ -181,7 +246,17 @@ export default function Buy({
       console.log('📝 Requesting Phantom to sign and send transaction...');
 
       // 4. Send transaction with Phantom
-      const { signature } = await phantom.signAndSendTransaction(transaction);
+      let signature;
+      try {
+        const result = await phantom.signAndSendTransaction(transaction);
+        signature = result.signature;
+      } catch (phantomError) {
+        console.error('Phantom error:', phantomError);
+        if (phantomError.code === 4001 || phantomError.message?.includes('User rejected')) {
+          throw new Error('User rejected the transaction');
+        }
+        throw new Error('Failed to send transaction with Phantom');
+      }
 
       console.log('✅ Transaction sent! Signature:', signature);
 
@@ -212,11 +287,11 @@ export default function Buy({
       }
 
       if (!confirmed) {
-        throw new Error('Transaction confirmation timeout');
+        throw new Error('Transaction confirmation timeout. Check explorer for status.');
       }
 
-      // 6. Get the actual output amount from the transaction
-      const outputAmount = parseFloat(swapData.outAmount || swapOutput) / 1e6; // Adjust decimals for TREAT
+      // 6. Get the actual output amount
+      const outputAmount = parseFloat(swapData.outAmount || swapOutput) / 1e6;
       
       showToast(
         '✅ Swap Complete!',
@@ -235,11 +310,21 @@ export default function Buy({
 
     } catch (error) {
       console.error('Swap error:', error);
-
-      if (error.code === 4001 || error.message?.includes('User rejected')) {
+      
+      let errorMessage = error.message || 'Please try again';
+      
+      if (errorMessage.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
+      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity')) {
+        showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap', 'error');
+      } else if (errorMessage.includes('timeout')) {
+        showToast('❌ Timeout', 'Transaction took too long. Check explorer for status.', 'error');
+      } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
+        showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
+      } else if (errorMessage.includes('API key')) {
+        showToast('❌ API Key Error', 'Invalid or missing Jupiter API key', 'error');
       } else {
-        showToast('❌ Swap Failed', error.message || 'Please try again', 'error');
+        showToast('❌ Swap Failed', errorMessage, 'error');
       }
     } finally {
       setIsSwapping(false);

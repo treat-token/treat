@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
-// Use the same endpoint as in App.js
 const RPC_ENDPOINT = 'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA';
 
 export default function Buy({ 
@@ -21,7 +20,6 @@ export default function Buy({
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
 
-  // Fetch SOL price on mount
   useEffect(() => {
     fetchSolPrice();
   }, []);
@@ -57,7 +55,6 @@ export default function Buy({
     const usd = amount * solPrice;
     setUsdValue(`~ $${usd.toFixed(2)}`);
 
-    // Calculate output based on treat price
     if (treatPrice > 0) {
       const output = amount * (solPrice / treatPrice);
       setSwapOutput(output.toFixed(4));
@@ -91,7 +88,6 @@ export default function Buy({
       return;
     }
 
-    // Show confirmation dialog
     setConfirmData({
       amount: amount,
       output: swapOutput,
@@ -104,7 +100,7 @@ export default function Buy({
     setShowConfirmDialog(false);
 
     if (!walletConnected) {
-      showToast('❌ Not Connected', 'Please connect your wallet using the header button', 'error');
+      showToast('❌ Not Connected', 'Please connect your wallet', 'error');
       return;
     }
 
@@ -127,39 +123,72 @@ export default function Buy({
     setIsSwapping(true);
     try {
       const phantom = window.phantom.solana;
-      // Use the direct RPC endpoint
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+      const wallet = new PublicKey(walletAddress);
 
-      console.log('🔄 Starting swap with Phantom...');
+      console.log('🔄 Starting swap with Jupiter...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
 
-      const fromPubkey = new PublicKey(walletAddress);
+      // 1. Get Jupiter quote
+      const quoteResponse = await fetch(
+        `https://quote-api.jup.ag/v6/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${TREAT_MINT_ADDRESS}&amount=${Math.floor(amount * 1e9)}&slippageBps=50`
+      );
 
-      // Create a transaction
-      const transaction = new Transaction();
+      if (!quoteResponse.ok) {
+        throw new Error('Failed to get quote');
+      }
 
-      // Add a memo instruction (for demo purposes)
-      const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-      const memoText = `Swap ${amount} SOL for TREAT`;
-      const memoData = new TextEncoder().encode(memoText);
+      const quoteData = await quoteResponse.json();
+      
+      if (!quoteData || !quoteData.routePlan) {
+        throw new Error('No route found for swap');
+      }
 
-      // Get latest blockhash
-      const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = fromPubkey;
+      console.log('📊 Quote received:', quoteData);
+
+      // 2. Get swap transaction
+      const swapResponse = await fetch('https://quote-api.jup.ag/v6/swap', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          quoteResponse: quoteData,
+          userPublicKey: walletAddress,
+          wrapAndUnwrapSol: true,
+          dynamicComputeUnitLimit: true,
+          prioritizationFeeLamports: 'auto'
+        })
+      });
+
+      if (!swapResponse.ok) {
+        throw new Error('Failed to get swap transaction');
+      }
+
+      const swapData = await swapResponse.json();
+      
+      if (!swapData || !swapData.swapTransaction) {
+        throw new Error('No swap transaction received');
+      }
+
+      console.log('📝 Swap transaction received');
+
+      // 3. Deserialize the transaction
+      const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
+      const transaction = Transaction.from(swapTransactionBuf);
 
       console.log('📝 Requesting Phantom to sign and send transaction...');
 
-      // Use Phantom's native signAndSendTransaction
+      // 4. Send transaction with Phantom
       const { signature } = await phantom.signAndSendTransaction(transaction);
 
       console.log('✅ Transaction sent! Signature:', signature);
 
-      // Wait for confirmation
+      // 5. Wait for confirmation
       let confirmed = false;
       let attempts = 0;
-      const maxAttempts = 60;
+      const maxAttempts = 30;
 
       while (!confirmed && attempts < maxAttempts) {
         try {
@@ -183,11 +212,15 @@ export default function Buy({
       }
 
       if (!confirmed) {
-        throw new Error('Transaction confirmation timeout. Check the signature on Solana Explorer to verify.');
+        throw new Error('Transaction confirmation timeout');
       }
 
-      showToast('✅ Swap Complete!',
-        `Transaction: ${signature.slice(0, 8)}...${signature.slice(-8)}`,
+      // 6. Get the actual output amount from the transaction
+      const outputAmount = parseFloat(swapData.outAmount || swapOutput) / 1e6; // Adjust decimals for TREAT
+      
+      showToast(
+        '✅ Swap Complete!',
+        `Swapped ${amount} SOL for ${outputAmount.toFixed(4)} TREAT`,
         'success'
       );
 
@@ -195,14 +228,14 @@ export default function Buy({
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
 
-      // Refresh balances after swap
+      // Refresh balances
       if (window.refreshBalances) {
         await window.refreshBalances();
       }
+
     } catch (error) {
       console.error('Swap error:', error);
 
-      // Handle user rejection
       if (error.code === 4001 || error.message?.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
       } else {
@@ -308,7 +341,6 @@ export default function Buy({
               </div>
             </div>
 
-            {/* ONLY SWAP BUTTON - NO CONNECT BUTTON */}
             <button
               className="swap-btn"
               onClick={handleSwapClick}
@@ -351,7 +383,6 @@ export default function Buy({
         </p>
       </div>
 
-      {/* Confirmation Dialog */}
       {showConfirmDialog && confirmData && (
         <div style={{
           position: 'fixed',

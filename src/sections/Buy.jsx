@@ -4,7 +4,7 @@ import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solan
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
 
-export default function Buy({ walletConnected, walletAddress, solBalance, treatBalance, treatPrice, showToast, onConnect, onDisconnect }) {
+export default function Buy({ walletConnected, walletAddress, solBalance, treatBalance, treatPrice, showToast }) {
   const [swapInput, setSwapInput] = useState('');
   const [swapOutput, setSwapOutput] = useState('0.0');
   const [usdValue, setUsdValue] = useState('~ $0.00');
@@ -129,25 +129,9 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
 
   return (
     <div className="card" style={{ padding: '1.5rem' }}>
-      <div className="buy-header">
-        <div className="section-header" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
-          <span className="accent green"></span>
-          BUY TREAT TOKEN
-        </div>
-        <div className="wallet-controls">
-          {walletConnected ? (
-            <>
-              <span className="wallet-status">Connected: {walletAddress.slice(0, 6)}...{walletAddress.slice(-6)}</span>
-              <button className="disconnect-btn" onClick={onDisconnect}>
-                Disconnect
-              </button>
-            </>
-          ) : (
-            <button className="connect-wallet-btn" onClick={onConnect}>
-              Connect Wallet
-            </button>
-          )}
-        </div>
+      <div className="section-header" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
+        <span className="accent green"></span>
+        BUY TREAT TOKEN
       </div>
 
       <div className="swap-card">

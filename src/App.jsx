@@ -145,8 +145,6 @@ function AppContent() {
       treatBalance={treatBalance}
       treatPrice={treatPrice}
       showToast={showToast}
-      onConnect={connectWallet}
-      onDisconnect={disconnectWallet}
     />,
   };
 

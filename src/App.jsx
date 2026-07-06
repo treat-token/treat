@@ -1,4 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
+import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
+import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
+import { clusterApiUrl, Connection, PublicKey } from '@solana/web3.js';
 import Header from './components/Header';
 import Home from './sections/Home';
 import About from './sections/About';
@@ -10,14 +14,20 @@ import Buy from './sections/Buy';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 
-export default function App() {
+const NETWORK = WalletAdapterNetwork.Mainnet;
+const ENDPOINT = clusterApiUrl(NETWORK);
+const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
+
+const wallets = [new PhantomWalletAdapter()];
+
+function AppContent() {
   const [activeSection, setActiveSection] = useState('home');
-  const [walletConnected, setWalletConnected] = useState(false);
   const [walletAddress, setWalletAddress] = useState('');
   const [solBalance, setSolBalance] = useState(0);
   const [treatBalance, setTreatBalance] = useState(0);
   const [treatPrice, setTreatPrice] = useState(0);
   const [toast, setToast] = useState(null);
+  const [walletConnected, setWalletConnected] = useState(false);
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type });
@@ -29,6 +39,82 @@ export default function App() {
     const interval = setInterval(fetchPriceData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    checkWalletConnection();
+  }, []);
+
+  const checkWalletConnection = async () => {
+    if (window.phantom?.solana?.isPhantom) {
+      try {
+        const phantom = window.phantom.solana;
+        if (phantom.isConnected) {
+          const pubKey = phantom.publicKey.toString();
+          setWalletAddress(pubKey);
+          setWalletConnected(true);
+          await fetchBalances(pubKey);
+        }
+      } catch (error) {
+        console.error('Error checking wallet:', error);
+      }
+    }
+  };
+
+  const connectWallet = async () => {
+    if (!window.phantom?.solana) {
+      showToast('❌ Wallet Not Found', 'Please install Phantom wallet', 'error');
+      return;
+    }
+
+    try {
+      const phantom = window.phantom.solana;
+      const response = await phantom.connect();
+      const pubKey = response.publicKey.toString();
+      setWalletAddress(pubKey);
+      setWalletConnected(true);
+      await fetchBalances(pubKey);
+      showToast('✅ Connected', `Connected to ${pubKey.slice(0, 6)}...${pubKey.slice(-6)}`, 'success');
+    } catch (error) {
+      showToast('❌ Connection Failed', error.message || 'Failed to connect wallet', 'error');
+    }
+  };
+
+  const disconnectWallet = async () => {
+    try {
+      if (window.phantom?.solana) {
+        await window.phantom.solana.disconnect();
+      }
+      setWalletAddress('');
+      setWalletConnected(false);
+      setSolBalance(0);
+      setTreatBalance(0);
+      showToast('✅ Disconnected', 'Wallet disconnected', 'success');
+    } catch (error) {
+      showToast('❌ Disconnect Failed', error.message || 'Failed to disconnect', 'error');
+    }
+  };
+
+  const fetchBalances = async (pubKeyStr) => {
+    try {
+      const connection = new Connection(ENDPOINT, 'confirmed');
+      const pubKey = new PublicKey(pubKeyStr);
+
+      const solBalance = await connection.getBalance(pubKey);
+      setSolBalance(solBalance / 1e9);
+
+      const tokenAccounts = await connection.getParsedTokenAccountsByOwner(pubKey, {
+        mint: new PublicKey(TREAT_MINT_ADDRESS),
+      });
+
+      let treatBalance = 0;
+      if (tokenAccounts.value.length > 0) {
+        treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount;
+      }
+      setTreatBalance(treatBalance);
+    } catch (error) {
+      console.error('Error fetching balances:', error);
+    }
+  };
 
   const fetchPriceData = async () => {
     try {
@@ -52,8 +138,8 @@ export default function App() {
     burn: <Burn />,
     roadmap: <Roadmap />,
     faq: <FAQ />,
-    buy: <Buy 
-      walletConnected={walletConnected} 
+    buy: <Buy
+      walletConnected={walletConnected}
       walletAddress={walletAddress}
       solBalance={solBalance}
       treatBalance={treatBalance}
@@ -64,18 +150,18 @@ export default function App() {
 
   return (
     <div>
-      <Header 
-        activeSection={activeSection} 
+      <Header
+        activeSection={activeSection}
         onNavigate={setActiveSection}
         walletConnected={walletConnected}
         walletAddress={walletAddress}
-        onConnect={() => setWalletConnected(true)}
-        onDisconnect={() => setWalletConnected(false)}
+        onConnect={connectWallet}
+        onDisconnect={disconnectWallet}
       />
-      
+
       <div className="container">
         {Object.entries(sections).map(([key, component]) => (
-          <div 
+          <div
             key={key}
             className={`section ${activeSection === key ? 'active' : ''}`}
           >
@@ -89,12 +175,22 @@ export default function App() {
       </div>
 
       {toast && (
-        <Toast 
-          title={toast.title} 
-          message={toast.message} 
+        <Toast
+          title={toast.title}
+          message={toast.message}
           type={toast.type}
         />
       )}
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ConnectionProvider endpoint={ENDPOINT}>
+      <WalletProvider wallets={wallets} autoConnect>
+        <AppContent />
+      </WalletProvider>
+    </ConnectionProvider>
   );
 }

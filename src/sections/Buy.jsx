@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
+import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
+const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
 
 export default function Buy({ walletConnected, walletAddress, solBalance, treatBalance, treatPrice, showToast }) {
   const [swapInput, setSwapInput] = useState('');
@@ -54,6 +56,11 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
       return;
     }
 
+    if (!window.phantom?.solana) {
+      showToast('❌ Phantom Not Found', 'Phantom wallet is not installed', 'error');
+      return;
+    }
+
     const amount = parseFloat(swapInput);
     if (!amount || amount <= 0) {
       showToast('❌ Invalid Amount', 'Please enter a valid amount', 'error');
@@ -62,7 +69,11 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
 
     setIsSwapping(true);
     try {
-      // Call the secure Cloudflare Pages Function
+      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
+      const phantom = window.phantom.solana;
+      const userPublicKey = new PublicKey(walletAddress);
+
+      // Get swap quote from Jupiter API via backend
       const response = await fetch('/api/swap', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -76,15 +87,40 @@ export default function Buy({ walletConnected, walletAddress, solBalance, treatB
       });
 
       if (!response.ok) {
-        throw new Error(`API error: ${response.statusText}`);
+        throw new Error(`Quote API error: ${response.statusText}`);
       }
 
-      const data = await response.json();
-      showToast('✅ Swap Initiated', 'Your swap transaction is being processed', 'success');
+      const quoteData = await response.json();
+
+      // Get swap instruction from Jupiter API via backend
+      const swapResponse = await fetch('/api/swap', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          endpoint: '/swap',
+          quoteResponse: quoteData,
+          userPublicKey: walletAddress,
+          wrapAndUnwrapSol: true,
+        }),
+      });
+
+      if (!swapResponse.ok) {
+        throw new Error(`Swap API error: ${swapResponse.statusText}`);
+      }
+
+      const swapData = await swapResponse.json();
+      const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
+      const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
+
+      // Sign and send transaction using Phantom wallet
+      const signedTx = await phantom.signAndSendTransaction(transaction);
+
+      showToast('✅ Swap Initiated', `Transaction: ${signedTx.signature.slice(0, 8)}...`, 'success');
       setSwapInput('');
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
     } catch (error) {
+      console.error('Swap error:', error);
       showToast('❌ Swap Failed', error.message || 'Please try again', 'error');
     } finally {
       setIsSwapping(false);

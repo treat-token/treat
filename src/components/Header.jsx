@@ -27,13 +27,19 @@ export default function Header({ activeSection, onNavigate, walletConnected, wal
 
         <div className="nav-right">
           <div className="header-wallet-status">
-            <span className={`status-dot ${walletConnected ? 'connected' : ''}`}></span>
-            <span className="wallet-addr">
-              {walletConnected ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}` : 'Not Connected'}
-            </span>
-            {walletConnected && (
-              <button className="disconnect-btn" onClick={onDisconnect}>
-                Disconnect
+            {walletConnected ? (
+              <>
+                <span className={`status-dot ${walletConnected ? 'connected' : ''}`}></span>
+                <span className="wallet-addr">
+                  {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`}
+                </span>
+                <button className="disconnect-btn" onClick={onDisconnect}>
+                  Disconnect
+                </button>
+              </>
+            ) : (
+              <button className="connect-wallet-btn" onClick={onConnect}>
+                Connect Wallet
               </button>
             )}
           </div>

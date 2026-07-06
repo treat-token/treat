@@ -879,6 +879,66 @@
             color: #a89890;
         }
 
+        /* Loading spinner */
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #1a1614;
+            border-top: 2px solid #14F195;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1a1614;
+            border: 1px solid #2a2220;
+            border-radius: 16px;
+            padding: 1rem 1.5rem;
+            color: #f0ece8;
+            font-size: 0.9rem;
+            max-width: 400px;
+            z-index: 9999;
+            box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.8);
+            transform: translateY(100px);
+            opacity: 0;
+            transition: all 0.3s ease;
+        }
+
+        .toast.show {
+            transform: translateY(0);
+            opacity: 1;
+        }
+
+        .toast.success {
+            border-color: #14F195;
+        }
+
+        .toast.error {
+            border-color: #ff4757;
+        }
+
+        .toast .toast-title {
+            font-weight: 600;
+            margin-bottom: 0.3rem;
+        }
+
+        .toast .toast-message {
+            color: #a89890;
+            font-size: 0.8rem;
+        }
+
         /* ===== FOOTER ===== */
         .footer {
             font-size: 0.75rem;
@@ -1139,7 +1199,7 @@
                             <span>$TREAT</span>
                             <span class="badge">SPL TOKEN</span>
                             <span class="badge purple">SOLANA</span>
-                            <span class="badge orange"> 50% BURN</span>
+                            <span class="badge orange">50% BURN</span>
                         </div>
                         <div class="tagline">
                             <strong>COMMUNITY-DRIVEN TOKEN ON SOLANA</strong> — 50% OF SUPPLY BURNED OVER 1 YEAR TO CREATE SCARCITY AND LONG-TERM VALUE.
@@ -1153,7 +1213,7 @@
                 <div class="burn-flex">
                     <div>
                         <div class="burn-number">50%</div>
-                        <div class="burn-label"> BURN TARGET OVER 1 YEAR</div>
+                        <div class="burn-label">BURN TARGET OVER 1 YEAR</div>
                     </div>
                     <div>
                         <div class="burn-desc">
@@ -1168,7 +1228,7 @@
 
             <!-- BANNER SEPARATOR -->
             <div class="banner-sep">
-                <p> 25 % REWARD . 250 MILLION CIRCULATING TOKEN DISTRIBUTION </p>
+                <p>25% REWARD . 250 MILLION CIRCULATING TOKEN DISTRIBUTION</p>
                 <div class="sub-text">250 MILLION TOKENS WILL BE DISTRIBUTED IN 1 YEAR RANDOMLY TO GIVE BETTER REWARD TO TREAT HOLDERS - BEST REWARD FOR COMMUNITY</div>
             </div>
 
@@ -1286,7 +1346,7 @@
                 <div class="burn-flex">
                     <div>
                         <div class="burn-number">50%</div>
-                        <div class="burn-label"> BURN TARGET OVER 1 YEAR</div>
+                        <div class="burn-label">BURN TARGET OVER 1 YEAR</div>
                     </div>
                     <div>
                         <div class="burn-desc">
@@ -1354,7 +1414,7 @@
                     <div class="roadmap-item">
                         <div class="phase"></div>
                         <div class="title">TOKEN LAUNCH</div>
-                        <span class="status live"> COMPLETED</span>
+                        <span class="status live">COMPLETED</span>
                     </div>
                     <div class="roadmap-item">
                         <div class="phase"></div>
@@ -1367,19 +1427,19 @@
                         <span class="status upcoming">COMPLETED</span>
                     </div>
                     <div class="roadmap-item">
-                        <div class="phase"> </div>
-                        <div class="title"> GOVERNANCE</div>
-                        <span class="status upcoming"> UPCOMING</span>
-                    </div>
-                    <div class="roadmap-item">
-                        <div class="phase"> </div>
-                        <div class="title"> CEX LISTING</div>
+                        <div class="phase"></div>
+                        <div class="title">GOVERNANCE</div>
                         <span class="status upcoming">UPCOMING</span>
                     </div>
                     <div class="roadmap-item">
-                        <div class="phase"> </div>
-                        <div class="title"> BURN COMPLETE</div>
-                        <span class="status upcoming"> Q4 2027</span>
+                        <div class="phase"></div>
+                        <div class="title">CEX LISTING</div>
+                        <span class="status upcoming">UPCOMING</span>
+                    </div>
+                    <div class="roadmap-item">
+                        <div class="phase"></div>
+                        <div class="title">BURN COMPLETE</div>
+                        <span class="status upcoming">Q4 2027</span>
                     </div>
                 </div>
             </div>
@@ -1471,10 +1531,9 @@
                         </div>
                         <div class="swap-input-row">
                             <input type="number" id="swapInput" placeholder="0.0" min="0" step="0.001" />
-                            <div class="token-select" onclick="alert('Token selection coming soon')">
+                            <div class="token-select">
                                 <img src="https://cryptologos.cc/logos/solana-sol-logo.png" alt="SOL" />
                                 <span class="token-symbol">SOL</span>
-                                <span class="arrow-down">▼</span>
                             </div>
                         </div>
                         <div class="balance-info">
@@ -1493,10 +1552,9 @@
                         </div>
                         <div class="swap-input-row">
                             <input type="text" id="swapOutput" placeholder="0.0" readonly disabled />
-                            <div class="token-select" onclick="alert('Token selection coming soon')">
+                            <div class="token-select">
                                 <img src="https://i.postimg.cc/d1CJyjt9/treat1727943702621.png" alt="TREAT" />
                                 <span class="token-symbol">TREAT</span>
-                                <span class="arrow-down">▼</span>
                             </div>
                         </div>
                         <div class="balance-info">
@@ -1562,6 +1620,12 @@
 
     </div><!-- end container -->
 
+    <!-- Toast Notification -->
+    <div class="toast" id="toast">
+        <div class="toast-title" id="toastTitle">Success</div>
+        <div class="toast-message" id="toastMessage">Operation completed</div>
+    </div>
+
     <!-- ============================================================ -->
     <!-- JAVASCRIPT                                                     -->
     <!-- ============================================================ -->
@@ -1583,13 +1647,8 @@
 
         // ===== NAVIGATION =====
         function navigateTo(sectionId) {
-            // Close dropdown
             document.getElementById('dropdownContent').classList.remove('show');
-            
-            // Show section
             showSection(sectionId);
-            
-            // Update dropdown button active state
             document.querySelectorAll('.dropdown-content button').forEach(function(btn) {
                 btn.classList.remove('active');
                 if (btn.getAttribute('data-section') === sectionId) {
@@ -1621,72 +1680,161 @@
             }
         }
 
+        // ===== TOAST NOTIFICATION =====
+        function showToast(title, message, type = 'success') {
+            const toast = document.getElementById('toast');
+            const toastTitle = document.getElementById('toastTitle');
+            const toastMessage = document.getElementById('toastMessage');
+            
+            toast.className = 'toast ' + type;
+            toastTitle.textContent = title;
+            toastMessage.textContent = message;
+            
+            toast.classList.add('show');
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+            }, 5000);
+        }
+
         // ===== PHANTOM WALLET CONNECTION =====
         let walletConnected = false;
         let walletAddress = '';
         let solBalance = 0;
         let treatBalance = 0;
+        let treatPrice = 0;
 
         const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('treatMintAddress').textContent = TREAT_MINT_ADDRESS;
             showSection('home');
+            checkWalletConnection();
         });
+
+        // Check if wallet is already connected
+        function checkWalletConnection() {
+            if (window.solana && window.solana.isPhantom) {
+                window.solana.on('connect', () => {
+                    console.log('Wallet connected');
+                    handleWalletConnection();
+                });
+                
+                window.solana.on('disconnect', () => {
+                    console.log('Wallet disconnected');
+                    walletConnected = false;
+                    const btn = document.getElementById('connectWalletBtn');
+                    btn.classList.remove('connected');
+                    btn.innerHTML = '🔗 CONNECT PHANTOM WALLET';
+                    document.getElementById('swapBtn').disabled = true;
+                });
+            }
+        }
 
         async function connectPhantom() {
             if (!window.solana || !window.solana.isPhantom) {
-                alert('⚠️ PHANTOM WALLET NOT DETECTED!\n\nPlease install Phantom Wallet from:\nhttps://phantom.app/');
+                showToast('⚠️ Wallet Required', 'Please install Phantom Wallet from phantom.app', 'error');
                 window.open('https://phantom.app/', '_blank');
                 return;
             }
 
             try {
                 const response = await window.solana.connect();
-                walletAddress = response.publicKey.toString();
-                walletConnected = true;
-
-                const btn = document.getElementById('connectWalletBtn');
-                btn.classList.add('connected');
-                btn.innerHTML = '✅ CONNECTED<br><span class="wallet-address">' +
-                    walletAddress.slice(0, 6) + '...' + walletAddress.slice(-6) +
-                    '</span>';
-
-                document.getElementById('swapBtn').disabled = false;
-                await fetchBalances();
-                updateSwapRate();
-
-                console.log('✅ Phantom Wallet connected:', walletAddress);
-
+                await handleWalletConnection();
             } catch (error) {
                 console.error('Connection error:', error);
-                alert('❌ Failed to connect wallet. Please try again.');
+                showToast('❌ Connection Failed', error.message || 'Please try again', 'error');
             }
+        }
+
+        async function handleWalletConnection() {
+            if (!window.solana.publicKey) {
+                showToast('❌ Error', 'No public key available', 'error');
+                return;
+            }
+
+            walletAddress = window.solana.publicKey.toString();
+            walletConnected = true;
+
+            const btn = document.getElementById('connectWalletBtn');
+            btn.classList.add('connected');
+            btn.innerHTML = '✅ CONNECTED<br><span class="wallet-address">' +
+                walletAddress.slice(0, 6) + '...' + walletAddress.slice(-6) +
+                '</span>';
+
+            document.getElementById('swapBtn').disabled = false;
+            
+            await fetchBalances();
+            await fetchTreatPrice();
+            updateSwapRate();
+            
+            showToast('✅ Connected', 'Wallet: ' + walletAddress.slice(0, 8) + '...', 'success');
         }
 
         async function fetchBalances() {
             if (!window.solana || !walletConnected) return;
 
             try {
+                // Get SOL balance
                 const solBalanceLamports = await window.solana.getBalance();
                 solBalance = solBalanceLamports / 1e9;
                 document.getElementById('solBalance').textContent = solBalance.toFixed(4);
 
-                treatBalance = 0;
+                // Get TREAT token balance using getTokenAccountsByOwner
+                try {
+                    const connection = window.solana.connection;
+                    const tokenAccounts = await connection.getTokenAccountsByOwner(
+                        window.solana.publicKey,
+                        { mint: new PublicKey(TREAT_MINT_ADDRESS) }
+                    );
+                    
+                    if (tokenAccounts.value.length > 0) {
+                        const accountInfo = await connection.getTokenAccountBalance(
+                            tokenAccounts.value[0].pubkey
+                        );
+                        treatBalance = accountInfo.value.uiAmount || 0;
+                    } else {
+                        treatBalance = 0;
+                    }
+                } catch (tokenError) {
+                    console.warn('Could not fetch TREAT balance:', tokenError);
+                    treatBalance = 0;
+                }
+                
                 document.getElementById('treatBalance').textContent = treatBalance.toFixed(2);
 
+                // Set up input listener
                 document.getElementById('swapInput').addEventListener('input', function() {
                     updateSwapOutput();
                 });
 
             } catch (error) {
                 console.error('Error fetching balances:', error);
+                showToast('⚠️ Balance Error', 'Could not fetch token balances', 'error');
+            }
+        }
+
+        async function fetchTreatPrice() {
+            try {
+                // Dflow API for price
+                const response = await fetch(
+                    'https://api.dflow.io/v1/price?mint=' + TREAT_MINT_ADDRESS
+                );
+                if (response.ok) {
+                    const data = await response.json();
+                    treatPrice = data.price || 0.001;
+                } else {
+                    treatPrice = 0.001; // Fallback price
+                }
+            } catch (error) {
+                console.warn('Could not fetch price, using fallback:', error);
+                treatPrice = 0.001;
             }
         }
 
         function updateSwapRate() {
-            const rate = 1000;
-            document.getElementById('swapRate').textContent = '1 SOL ≈ ' + rate + ' TREAT';
+            const rate = treatPrice > 0 ? 1 / treatPrice : 1000;
+            document.getElementById('swapRate').textContent = '1 SOL ≈ ' + rate.toFixed(2) + ' TREAT';
         }
 
         function updateSwapOutput() {
@@ -1696,14 +1844,14 @@
                 return;
             }
 
-            const rate = 1000;
+            const rate = treatPrice > 0 ? 1 / treatPrice : 1000;
             const output = input * rate;
-            document.getElementById('swapOutput').value = output.toFixed(2);
+            document.getElementById('swapOutput').value = output.toFixed(4);
         }
 
         function setMaxSol() {
             if (!walletConnected) {
-                alert('⚠️ Please connect your wallet first.');
+                showToast('⚠️ Wallet Required', 'Please connect your wallet first', 'error');
                 return;
             }
             document.getElementById('swapInput').value = solBalance.toFixed(6);
@@ -1712,56 +1860,124 @@
 
         async function executeSwap() {
             if (!walletConnected) {
-                alert('⚠️ Please connect your wallet first.');
+                showToast('⚠️ Wallet Required', 'Please connect your wallet first', 'error');
                 return;
             }
 
             const inputAmount = parseFloat(document.getElementById('swapInput').value);
             if (isNaN(inputAmount) || inputAmount <= 0) {
-                alert('⚠️ Please enter a valid amount.');
+                showToast('⚠️ Invalid Amount', 'Please enter a valid amount', 'error');
                 return;
             }
 
             if (inputAmount > solBalance) {
-                alert('⚠️ Insufficient SOL balance.');
+                showToast('⚠️ Insufficient Balance', 'Not enough SOL in wallet', 'error');
                 return;
             }
 
-            if (!confirm('🔄 Swap ' + inputAmount + ' SOL for TREAT tokens?\n\n' +
-                    'Rate: 1 SOL ≈ 1000 TREAT\n' +
+            const rate = treatPrice > 0 ? 1 / treatPrice : 1000;
+            const outputAmount = inputAmount * rate;
+            
+            if (!confirm('🔄 Swap ' + inputAmount + ' SOL for ' + outputAmount.toFixed(4) + ' TREAT?\n\n' +
+                    'Rate: 1 SOL ≈ ' + rate.toFixed(2) + ' TREAT\n' +
                     'Slippage: 0.5%\n\n' +
-                    '⚠️ This is a demonstration. Actual swap requires a live DEX pool.')) {
+                    '⚠️ This will use Dflow for the swap.')) {
                 return;
             }
 
             const swapBtn = document.getElementById('swapBtn');
-            swapBtn.textContent = '⏳ PROCESSING...';
+            const originalText = swapBtn.textContent;
+            swapBtn.innerHTML = '<span class="spinner"></span> PROCESSING...';
             swapBtn.disabled = true;
 
             try {
-                await new Promise(resolve => setTimeout(resolve, 2000));
-
-                const outputAmount = parseFloat(document.getElementById('swapOutput').value);
-                alert('✅ SWAP COMPLETE!\n\n' +
-                    'You received: ' + outputAmount + ' TREAT\n' +
-                    'Transaction: DEMO_TX_' + Date.now().toString().slice(-8) + '\n\n' +
-                    '⚠️ This is a demonstration. Real swap not executed.');
-
-                solBalance -= inputAmount;
-                treatBalance += parseFloat(outputAmount);
-                document.getElementById('solBalance').textContent = solBalance.toFixed(4);
-                document.getElementById('treatBalance').textContent = treatBalance.toFixed(2);
-                document.getElementById('swapInput').value = '';
-                document.getElementById('swapOutput').value = '0.0';
+                // Execute swap via Dflow
+                const swapResult = await performDflowSwap(inputAmount);
+                
+                if (swapResult.success) {
+                    showToast('✅ Swap Complete!', 
+                        'Received: ' + swapResult.received + ' TREAT\n' +
+                        'Transaction: ' + swapResult.txid,
+                        'success'
+                    );
+                    
+                    // Update balances
+                    solBalance -= inputAmount;
+                    treatBalance += parseFloat(swapResult.received);
+                    document.getElementById('solBalance').textContent = solBalance.toFixed(4);
+                    document.getElementById('treatBalance').textContent = treatBalance.toFixed(2);
+                    document.getElementById('swapInput').value = '';
+                    document.getElementById('swapOutput').value = '0.0';
+                } else {
+                    throw new Error(swapResult.error || 'Swap failed');
+                }
 
             } catch (error) {
                 console.error('Swap error:', error);
-                alert('❌ Swap failed: ' + error.message);
+                showToast('❌ Swap Failed', error.message || 'Please try again', 'error');
             } finally {
-                swapBtn.textContent = 'SWAP TREAT';
+                swapBtn.innerHTML = originalText;
                 swapBtn.disabled = false;
             }
         }
+
+        async function performDflowSwap(amountInSol) {
+            try {
+                // Dflow swap API
+                const response = await fetch('https://api.dflow.io/v1/swap', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        fromMint: 'So11111111111111111111111111111111111111112', // SOL
+                        toMint: TREAT_MINT_ADDRESS,
+                        amount: amountInSol,
+                        slippage: 0.5,
+                        wallet: walletAddress
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.message || 'Swap API error');
+                }
+
+                const data = await response.json();
+                
+                // Send transaction
+                if (data.transaction) {
+                    const txSignature = await window.solana.sendTransaction(
+                        data.transaction,
+                        [window.solana.publicKey]
+                    );
+                    
+                    // Confirm transaction
+                    await window.solana.connection.confirmTransaction(txSignature);
+                    
+                    return {
+                        success: true,
+                        received: data.expectedOutput || amountInSol * 1000,
+                        txid: txSignature
+                    };
+                } else {
+                    throw new Error('No transaction returned from Dflow');
+                }
+
+            } catch (error) {
+                console.error('Dflow swap error:', error);
+                throw error;
+            }
+        }
+
+        // ===== LOAD PUBLIC KEY LIBRARY =====
+        // Load Solana Web3 for PublicKey
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@solana/web3.js@1.87.0/lib/index.iife.js';
+        script.onload = function() {
+            console.log('Solana Web3 loaded');
+        };
+        document.head.appendChild(script);
 
         // ===== SET DEFAULT =====
         document.addEventListener('DOMContentLoaded', function() {

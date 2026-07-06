@@ -322,6 +322,7 @@ export default function Buy({
               </div>
             </div>
 
+            {/* SWAP BUTTON - Only shows when wallet is connected */}
             <button
               className="swap-btn"
               onClick={handleSwapClick}
@@ -364,7 +365,7 @@ export default function Buy({
         </p>
       </div>
 
-      {/* Confirmation Dialog */}
+      {/* Confirmation Dialog - Only shows when triggered */}
       {showConfirmDialog && confirmData && (
         <div style={{
           position: 'fixed',
@@ -372,7 +373,7 @@ export default function Buy({
           left: 0,
           right: 0,
           bottom: 0,
-          background: 'rgba(0,0,0,0.8)',
+          background: 'rgba(0,0,0,0.85)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -388,24 +389,24 @@ export default function Buy({
             border: '1px solid #2a2220',
             boxShadow: '0 30px 60px rgba(0,0,0,0.9)'
           }}>
-            <h3 style={{ color: '#f0ece8', marginBottom: '1.5rem', textAlign: 'center' }}>
+            <h3 style={{ color: '#f0ece8', marginBottom: '1.5rem', textAlign: 'center', fontSize: '1.3rem' }}>
               Confirm Swap
             </h3>
             
             <div style={{ marginBottom: '1.5rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1f1a18' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
                 <span style={{ color: '#6b5f58' }}>You Pay</span>
-                <span style={{ color: '#f0ece8', fontWeight: 600 }}>{confirmData.amount} SOL</span>
+                <span style={{ color: '#f0ece8', fontWeight: 600 }}>{confirmData.amount.toFixed(4)} SOL</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1f1a18' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
                 <span style={{ color: '#6b5f58' }}>You Receive</span>
-                <span style={{ color: '#14F195', fontWeight: 600 }}>{confirmData.output} TREAT</span>
+                <span style={{ color: '#14F195', fontWeight: 600 }}>{parseFloat(confirmData.output).toFixed(4)} TREAT</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1f1a18' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
                 <span style={{ color: '#6b5f58' }}>Rate</span>
                 <span style={{ color: '#a89890' }}>1 SOL ≈ {confirmData.rate.toFixed(2)} TREAT</span>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0' }}>
                 <span style={{ color: '#6b5f58' }}>Slippage</span>
                 <span style={{ color: '#a89890' }}>0.5%</span>
               </div>

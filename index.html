@@ -2059,20 +2059,20 @@
             if (!window.solana || !walletConnected) return;
 
             try {
-                // Get SOL balance using Phantom
-                const lamports = await window.solana.getBalance();
+                // Create a connection to Solana mainnet using Alchemy RPC
+                const connection = new window.solanaWeb3.Connection(
+                    'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA',
+                    'confirmed'
+                );
+
+                // Get SOL balance
+                const lamports = await connection.getBalance(window.solana.publicKey);
                 solBalance = lamports / 1e9;
                 document.getElementById('solBalance').textContent = solBalance.toFixed(4);
                 console.log('SOL Balance:', solBalance);
 
                 // Get TREAT token balance
                 try {
-                    // Create a connection to Solana mainnet
-                    const connection = new window.solanaWeb3.Connection(
-                        'https://api.mainnet-beta.solana.com',
-                        'confirmed'
-                    );
-
                     const mintPubkey = new window.solanaWeb3.PublicKey(TREAT_MINT_ADDRESS);
                     const tokenAccounts = await connection.getTokenAccountsByOwner(
                         window.solana.publicKey,
@@ -2264,7 +2264,7 @@
 
                 // Wait for confirmation
                 const connection = new window.solanaWeb3.Connection(
-                    'https://api.mainnet-beta.solana.com',
+                    'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA',
                     'confirmed'
                 );
 

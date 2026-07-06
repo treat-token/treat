@@ -174,7 +174,7 @@ function AppContent() {
   };
 
   return (
-    <div>
+    <>
       <Header
         activeSection={activeSection}
         onNavigate={setActiveSection}
@@ -206,7 +206,7 @@ function AppContent() {
           type={toast.type}
         />
       )}
-    </div>
+    </>
   );
 }
 

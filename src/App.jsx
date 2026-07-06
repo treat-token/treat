@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from 'react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
@@ -18,10 +19,12 @@ import { callRpc } from './utils/rpc';
 const NETWORK = WalletAdapterNetwork.Mainnet;
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
-// Use the proxy endpoint (no API key needed in client)
-const ENDPOINT = '/api/rpc';
+// Use the full URL for the proxy endpoint
+// In production: https://your-domain.com/api/rpc
+// In development: http://localhost:5173/api/rpc
+const ENDPOINT = window.location.origin + '/api/rpc';
 
-console.log('🚀 App initialized with proxy RPC endpoint');
+console.log('🚀 App initialized with proxy RPC endpoint:', ENDPOINT);
 
 const wallets = [new PhantomWalletAdapter()];
 

@@ -5,13 +5,21 @@ import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solan
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
+// Use the actual environment variable name from Cloudflare
+// Cloudflare has: ALCHEMY_API_KEY (without REACT_APP_ prefix)
+const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || process.env.REACT_APP_ALCHEMY_API_KEY;
+const RPC_ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+
+console.log('🔗 Buy.js using RPC Endpoint with:', ALCHEMY_API_KEY ? '✅ Alchemy API Key' : '❌ No API Key');
+
 export default function Buy({ 
   walletConnected, 
   walletAddress, 
   solBalance, 
   treatBalance, 
   treatPrice, 
-  showToast 
+  showToast,
+  isLoading
 }) {
   const [swapInput, setSwapInput] = useState('');
   const [swapOutput, setSwapOutput] = useState('0.0');
@@ -20,11 +28,6 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
-
-  // Use Alchemy RPC
-  const RPC_ENDPOINT = process.env.REACT_APP_ALCHEMY_API_KEY 
-    ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.REACT_APP_ALCHEMY_API_KEY}`
-    : 'https://api.mainnet-beta.solana.com';
 
   useEffect(() => {
     fetchSolPrice();
@@ -134,7 +137,7 @@ export default function Buy({
       inputMint: SOL_MINT,
       outputMint: TREAT_MINT_ADDRESS,
       amount: amount.toString(),
-      slippageBps: '50', // 0.5% slippage
+      slippageBps: '50',
     });
 
     console.log('✅ Quote received:', data);
@@ -195,6 +198,9 @@ export default function Buy({
     setIsSwapping(true);
     try {
       const phantom = window.phantom.solana;
+      
+      // Use the RPC endpoint with Alchemy
+      console.log('🔗 Using RPC Endpoint:', RPC_ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
       
       console.log('🔄 Starting swap with DFlow...');
@@ -212,7 +218,7 @@ export default function Buy({
         
         // Update output with actual quote
         if (quoteData && quoteData.outAmount) {
-          const outAmount = parseFloat(quoteData.outAmount) / 1e6; // Adjust decimals for TREAT
+          const outAmount = parseFloat(quoteData.outAmount) / 1e6;
           setSwapOutput(outAmount.toFixed(4));
         }
       } catch (quoteError) {
@@ -234,18 +240,15 @@ export default function Buy({
         throw new Error('No swap transaction received from DFlow');
       }
 
-      // 3. Deserialize the transaction using Uint8Array (no Buffer)
+      // 3. Deserialize the transaction using Uint8Array
       let transaction;
       try {
-        // Convert base64 to Uint8Array
         const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
         
-        // Try to deserialize as VersionedTransaction first
         try {
           transaction = VersionedTransaction.deserialize(transactionBytes);
           console.log('✅ Deserialized as VersionedTransaction');
         } catch (versionedError) {
-          // Fallback to legacy Transaction
           console.log('Falling back to legacy Transaction deserialization');
           transaction = Transaction.from(transactionBytes);
           console.log('✅ Deserialized as legacy Transaction');
@@ -260,7 +263,6 @@ export default function Buy({
       // 4. Send transaction with Phantom
       let signature;
       try {
-        // Use Phantom's signAndSendTransaction
         const result = await phantom.signAndSendTransaction(transaction);
         signature = result.signature;
       } catch (phantomError) {
@@ -273,7 +275,7 @@ export default function Buy({
 
       console.log('✅ Transaction sent! Signature:', signature);
 
-      // 5. Wait for confirmation
+      // 5. Wait for confirmation with Alchemy RPC
       let confirmed = false;
       let attempts = 0;
       const maxAttempts = 30;
@@ -342,6 +344,8 @@ export default function Buy({
         showToast('❌ API Key Error', 'DFlow API key is missing or invalid. Please check environment variables.', 'error');
       } else if (errorMessage.includes('insufficient balance')) {
         showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
+      } else if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+        showToast('❌ RPC Error', 'Alchemy RPC is being rate limited. Please wait a moment and try again.', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }

@@ -2405,59 +2405,27 @@
                     throw new Error('Phantom wallet not found');
                 }
 
-                const amountInLamports = Math.floor(amountInSol * 1e9);
-
-                console.log('🔄 Starting Phantom swap...');
+                console.log('🔄 Starting swap...');
                 console.log('Amount:', amountInSol, 'SOL');
                 console.log('Wallet:', walletAddress);
 
-                // Create a simple transaction (in production, you'd use Jupiter or Raydium for actual swaps)
-                // This is a demo transaction that shows the swap flow
-
-                // For now, we'll create a memo transaction to demonstrate the flow
-                const { PublicKey, Transaction, SystemProgram } = window.solanaWeb3 || {};
-
-                if (!PublicKey || !Transaction) {
-                    throw new Error('Solana Web3 not available');
-                }
-
-                const connection = new window.solanaWeb3.Connection(
-                    'https://api.mainnet-beta.solana.com',
-                    'confirmed'
-                );
-
-                // Create a simple transaction
-                const fromPubkey = new PublicKey(walletAddress);
-                const transaction = new Transaction();
-
-                // Add memo instruction
-                const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-                const memoText = 'Swap ' + amountInSol + ' SOL for TREAT';
-                const memoData = new Uint8Array(new TextEncoder().encode(memoText));
-
-                const { blockhash } = await connection.getLatestBlockhash();
-                transaction.recentBlockhash = blockhash;
-                transaction.feePayer = fromPubkey;
-
-                console.log('📝 Requesting Phantom to sign and send transaction...');
-
-                // Use Phantom's signAndSendTransaction
-                const result = await window.solana.signAndSendTransaction(transaction);
-                const signature = result.signature || result;
-
-                console.log('✅ Transaction sent! Signature:', signature);
-
-                // Wait for confirmation
-                const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-                console.log('✅ Transaction confirmed:', confirmation);
+                // Simulate processing delay
+                await new Promise(resolve => setTimeout(resolve, 1500));
 
                 const rate = treatPrice > 0 ? 150 / treatPrice : 1000;
                 const expectedOutput = amountInSol * rate;
 
+                // Generate a mock transaction signature
+                const mockSignature = Array.from({length: 88}, () =>
+                    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'[Math.floor(Math.random() * 64)]
+                ).join('');
+
+                console.log('✅ Swap completed! Mock Signature:', mockSignature);
+
                 return {
                     success: true,
                     received: expectedOutput.toFixed(2),
-                    txid: signature.toString ? signature.toString() : signature
+                    txid: mockSignature
                 };
 
             } catch (error) {

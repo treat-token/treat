@@ -17,8 +17,11 @@ import { getCurrentRpcEndpoint, getNextRpcEndpoint } from './utils/rpc';
 
 const NETWORK = WalletAdapterNetwork.Mainnet;
 // Primary endpoint will fallback to alternatives if needed
-let ENDPOINT = getCurrentRpcEndpoint();
+const ENDPOINT = getCurrentRpcEndpoint();
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
+
+// Log which endpoint is being used
+console.log('Using RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
 
 const wallets = [new PhantomWalletAdapter()];
 

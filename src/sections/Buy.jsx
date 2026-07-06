@@ -1,16 +1,10 @@
 // src/sections/Buy.js
 import React, { useState, useEffect } from 'react';
-import { Connection, PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { callRpc } from '../utils/rpc';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
-
-// Use the actual environment variable name from Cloudflare
-// Cloudflare has: ALCHEMY_API_KEY (without REACT_APP_ prefix)
-const ALCHEMY_API_KEY = process.env.ALCHEMY_API_KEY || process.env.REACT_APP_ALCHEMY_API_KEY;
-const RPC_ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
-
-console.log('🔗 Buy.js using RPC Endpoint with:', ALCHEMY_API_KEY ? '✅ Alchemy API Key' : '❌ No API Key');
 
 export default function Buy({ 
   walletConnected, 
@@ -199,10 +193,6 @@ export default function Buy({
     try {
       const phantom = window.phantom.solana;
       
-      // Use the RPC endpoint with Alchemy
-      console.log('🔗 Using RPC Endpoint:', RPC_ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
-      const connection = new Connection(RPC_ENDPOINT, 'confirmed');
-      
       console.log('🔄 Starting swap with DFlow...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
@@ -275,20 +265,21 @@ export default function Buy({
 
       console.log('✅ Transaction sent! Signature:', signature);
 
-      // 5. Wait for confirmation with Alchemy RPC
+      // 5. Wait for confirmation using RPC proxy
       let confirmed = false;
       let attempts = 0;
       const maxAttempts = 30;
 
       while (!confirmed && attempts < maxAttempts) {
         try {
-          const status = await connection.getSignatureStatus(signature);
-          if (status.value) {
-            if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
+          const status = await callRpc('getSignatureStatuses', [[signature]]);
+          if (status.value && status.value[0]) {
+            const txStatus = status.value[0];
+            if (txStatus.confirmationStatus === 'confirmed' || txStatus.confirmationStatus === 'finalized') {
               confirmed = true;
-              console.log('✅ Transaction confirmed:', status);
-            } else if (status.value.err) {
-              throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+              console.log('✅ Transaction confirmed:', txStatus);
+            } else if (txStatus.err) {
+              throw new Error(`Transaction failed: ${JSON.stringify(txStatus.err)}`);
             }
           }
         } catch (e) {
@@ -344,8 +335,6 @@ export default function Buy({
         showToast('❌ API Key Error', 'DFlow API key is missing or invalid. Please check environment variables.', 'error');
       } else if (errorMessage.includes('insufficient balance')) {
         showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
-      } else if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
-        showToast('❌ RPC Error', 'Alchemy RPC is being rate limited. Please wait a moment and try again.', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }

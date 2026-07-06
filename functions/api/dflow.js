@@ -4,7 +4,7 @@ export async function onRequest(context) {
   
   // Get API key from Cloudflare environment variables
   const DFLOW_API_KEY = context.env.DFLOW_API_KEY || context.env.REACT_APP_DFLOW_API_KEY;
-  const DFLOW_API = 'https://quote-api.dflow.net'; // Production endpoint
+  const DFLOW_API = 'https://quote-api.dflow.net';
 
   // Handle OPTIONS request for CORS
   if (request.method === 'OPTIONS') {

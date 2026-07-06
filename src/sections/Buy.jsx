@@ -17,6 +17,8 @@ export default function Buy({
   const [usdValue, setUsdValue] = useState('~ $0.00');
   const [isSwapping, setIsSwapping] = useState(false);
   const [solPrice, setSolPrice] = useState(150);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmData, setConfirmData] = useState(null);
 
   // Fetch SOL price on mount
   useEffect(() => {
@@ -71,7 +73,35 @@ export default function Buy({
     }
   };
 
+  const handleSwapClick = () => {
+    if (!walletConnected) {
+      showToast('❌ Not Connected', 'Please connect your wallet using the header button', 'error');
+      return;
+    }
+
+    const amount = parseFloat(swapInput);
+    if (!amount || amount <= 0) {
+      showToast('❌ Invalid Amount', 'Please enter a valid amount', 'error');
+      return;
+    }
+
+    if (amount > solBalance) {
+      showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
+      return;
+    }
+
+    // Show confirmation dialog
+    setConfirmData({
+      amount: amount,
+      output: swapOutput,
+      rate: solPrice / treatPrice
+    });
+    setShowConfirmDialog(true);
+  };
+
   const handleSwap = async () => {
+    setShowConfirmDialog(false);
+    
     if (!walletConnected) {
       showToast('❌ Not Connected', 'Please connect your wallet using the header button', 'error');
       return;
@@ -98,6 +128,10 @@ export default function Buy({
       const phantom = window.phantom.solana;
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
 
+      console.log('🔄 Starting Dflow swap...');
+      console.log('Amount:', amount);
+      console.log('Wallet:', walletAddress);
+
       // 1. Get swap quote from Dflow via backend
       const quoteResponse = await fetch('/api/swap', {
         method: 'POST',
@@ -111,12 +145,21 @@ export default function Buy({
         }),
       });
 
+      console.log('Quote response status:', quoteResponse.status);
+
       if (!quoteResponse.ok) {
-        const errorData = await quoteResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || `Quote API error: ${quoteResponse.statusText}`);
+        const errorText = await quoteResponse.text();
+        console.error('Quote error response:', errorText);
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || `Quote API error: ${quoteResponse.statusText}`);
+        } catch (e) {
+          throw new Error(`Quote API error: ${quoteResponse.statusText} - ${errorText}`);
+        }
       }
 
       const quoteData = await quoteResponse.json();
+      console.log('Quote data:', quoteData);
       
       if (quoteData.error) {
         throw new Error(quoteData.error);
@@ -134,15 +177,28 @@ export default function Buy({
         }),
       });
 
+      console.log('Swap response status:', swapResponse.status);
+
       if (!swapResponse.ok) {
-        const errorData = await swapResponse.json().catch(() => ({}));
-        throw new Error(errorData.error || `Swap API error: ${swapResponse.statusText}`);
+        const errorText = await swapResponse.text();
+        console.error('Swap error response:', errorText);
+        try {
+          const errorData = JSON.parse(errorText);
+          throw new Error(errorData.error || `Swap API error: ${swapResponse.statusText}`);
+        } catch (e) {
+          throw new Error(`Swap API error: ${swapResponse.statusText} - ${errorText}`);
+        }
       }
 
       const swapData = await swapResponse.json();
+      console.log('Swap data received:', swapData);
       
       if (swapData.error) {
         throw new Error(swapData.error);
+      }
+
+      if (!swapData.swapTransaction) {
+        throw new Error('No swap transaction received from Dflow');
       }
 
       // 3. Deserialize and send transaction
@@ -159,7 +215,7 @@ export default function Buy({
       
       // Refresh balances after swap
       if (window.refreshBalances) {
-        window.refreshBalances();
+        await window.refreshBalances();
       }
     } catch (error) {
       console.error('Swap error:', error);
@@ -268,7 +324,7 @@ export default function Buy({
 
             <button
               className="swap-btn"
-              onClick={handleSwap}
+              onClick={handleSwapClick}
               disabled={isSwapping || !swapInput || parseFloat(swapInput) <= 0}
             >
               {isSwapping ? (
@@ -307,6 +363,97 @@ export default function Buy({
           {TREAT_MINT_ADDRESS}
         </p>
       </div>
+
+      {/* Confirmation Dialog */}
+      {showConfirmDialog && confirmData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div style={{
+            background: '#1a1614',
+            borderRadius: '24px',
+            padding: '2.5rem',
+            maxWidth: '440px',
+            width: '90%',
+            border: '1px solid #2a2220',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.9)'
+          }}>
+            <h3 style={{ color: '#f0ece8', marginBottom: '1.5rem', textAlign: 'center' }}>
+              Confirm Swap
+            </h3>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>You Pay</span>
+                <span style={{ color: '#f0ece8', fontWeight: 600 }}>{confirmData.amount} SOL</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>You Receive</span>
+                <span style={{ color: '#14F195', fontWeight: 600 }}>{confirmData.output} TREAT</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>Rate</span>
+                <span style={{ color: '#a89890' }}>1 SOL ≈ {confirmData.rate.toFixed(2)} TREAT</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0' }}>
+                <span style={{ color: '#6b5f58' }}>Slippage</span>
+                <span style={{ color: '#a89890' }}>0.5%</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                style={{
+                  flex: 1,
+                  padding: '0.8rem',
+                  background: '#1f1a18',
+                  border: '1px solid #2a2220',
+                  borderRadius: '40px',
+                  color: '#a89890',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => e.target.style.background = '#2a2220'}
+                onMouseLeave={(e) => e.target.style.background = '#1f1a18'}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSwap}
+                style={{
+                  flex: 2,
+                  padding: '0.8rem',
+                  background: 'linear-gradient(135deg, #9945FF, #7a2be0)',
+                  border: 'none',
+                  borderRadius: '40px',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => e.target.style.transform = 'scale(1.02)'}
+                onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+              >
+                Confirm Swap
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

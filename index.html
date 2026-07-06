@@ -1453,7 +1453,7 @@
     <!-- ===== FIXED HEADER ===== -->
     <header class="header">
         <div class="header-inner">
-            <a href="#" class="brand" onclick="showSection('home')">
+            <a href="#" class="brand" onclick="event.preventDefault(); showSection('home');">
                 <img src="https://i.postimg.cc/d1CJyjt9/treat1727943702621.png" alt="TREAT Logo" />
                 TREAT<span>.</span>
             </a>
@@ -2432,7 +2432,8 @@
 
                 // Add memo instruction
                 const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-                const memoData = Buffer.from('Swap ' + amountInSol + ' SOL for TREAT', 'utf8');
+                const memoText = 'Swap ' + amountInSol + ' SOL for TREAT';
+                const memoData = new Uint8Array(new TextEncoder().encode(memoText));
 
                 const { blockhash } = await connection.getLatestBlockhash();
                 transaction.recentBlockhash = blockhash;

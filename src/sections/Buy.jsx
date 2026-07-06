@@ -141,7 +141,8 @@ export default function Buy({
       
       // Add a memo instruction (for demo purposes)
       const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
-      const memoData = Buffer.from(`Swap ${amount} SOL for TREAT`, 'utf8');
+      const memoText = `Swap ${amount} SOL for TREAT`;
+      const memoData = new TextEncoder().encode(memoText);
       
       // Note: This is a simplified example. In production, you'd use Jupiter or Raydium for actual swaps
       // For now, we'll just show the transaction flow
@@ -242,9 +243,9 @@ export default function Buy({
                   onChange={(e) => handleSwapInput(e.target.value)}
                 />
                 <div className="token-select">
-                  <img 
-                    src="https://upload.wikimedia.org/wikipedia/commons/9/92/Solana_logo.png" 
-                    alt="SOL" 
+                  <img
+                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 397.7 311.7'%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill:%2314f195%7D%3C/style%3E%3C/defs%3E%3Cpath class='a' d='M64.6,237.9c2.4-2.4,5.7-3.8,9.2-3.8h317.4c5.8,0,8.7,7,4.6,11.1L372.6,271c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M64.6,3.8C67,1.4,70.3,0,73.8,0H391.2c5.8,0,8.7,7,4.6,11.1L372.6,40.6c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M333.1,120.9c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8,0-8.7,7-4.6,11.1l25.2,25.2c2.4,2.4,5.7,3.8,9.2,3.8H357.7c5.8,0,8.7-7,4.6-11.1Z'/%3E%3C/svg%3E"
+                    alt="SOL"
                   />
                   <span className="token-symbol">SOL</span>
                   <span className="arrow-down">▼</span>

@@ -15,12 +15,17 @@ import Footer from './components/Footer';
 import Toast from './components/Toast';
 
 const NETWORK = WalletAdapterNetwork.Mainnet;
-// Use Alchemy RPC - hardcode for now, move to env later
-const ALCHEMY_API_KEY = 'k5jwTvMDFEvbPGj5yreGA';
+
+// Use environment variables for API keys
+const ALCHEMY_API_KEY = process.env.REACT_APP_ALCHEMY_API_KEY || 'k5jwTvMDFEvbPGj5yreGA';
 const ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
-console.log('Using RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
+// Log which endpoint is being used (hide API key for security)
+console.log('🚀 App initialized with:');
+console.log('📡 RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
+console.log('🔑 Alchemy API Key:', ALCHEMY_API_KEY ? '✅ Set' : '❌ Missing');
+console.log('🔑 Jupiter API Key:', process.env.REACT_APP_JUPITER_API_KEY ? '✅ Set' : '❌ Missing');
 
 const wallets = [new PhantomWalletAdapter()];
 
@@ -38,6 +43,15 @@ function AppContent() {
     setToast({ title, message, type });
     setTimeout(() => setToast(null), 5000);
   };
+
+  // Make refreshBalances available globally for the Buy component
+  useEffect(() => {
+    window.refreshBalances = async () => {
+      if (walletAddress) {
+        await fetchBalances(walletAddress);
+      }
+    };
+  }, [walletAddress]);
 
   useEffect(() => {
     fetchPriceData();
@@ -251,6 +265,17 @@ function AppContent() {
 }
 
 export default function App() {
+  // Check if environment variables are set
+  if (!process.env.REACT_APP_ALCHEMY_API_KEY) {
+    console.warn('⚠️ REACT_APP_ALCHEMY_API_KEY not found in environment variables!');
+    console.warn('⚠️ Using fallback API key (may have rate limits)');
+  }
+  
+  if (!process.env.REACT_APP_JUPITER_API_KEY) {
+    console.warn('⚠️ REACT_APP_JUPITER_API_KEY not found in environment variables!');
+    console.warn('⚠️ Jupiter API calls may fail or be rate limited');
+  }
+
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
       <WalletProvider wallets={wallets} autoConnect>

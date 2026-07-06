@@ -5,11 +5,15 @@ workers_dev = true
 route = ""
 zone_id = ""
 
+[vars]
+DFLOW_API_KEY = ""
+
 [env.production]
 name = "treat-token-app-prod"
 routes = [
   { pattern = "example.com/*", zone_name = "example.com" }
 ]
+vars = { DFLOW_API_KEY = "" }
 
 [build]
 command = "npm run build"

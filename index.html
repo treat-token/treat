@@ -2238,16 +2238,16 @@
             document.getElementById('confirmRate').textContent = '1 SOL ≈ ' + rate.toFixed(2) + ' TREAT';
 
             // Show confirmation modal
-            document.getElementById('swapConfirmModal').style.display = 'flex';
+            document.getElementById('swapConfirmModal').classList.add('show');
         }
 
         function cancelSwapConfirm() {
-            document.getElementById('swapConfirmModal').style.display = 'none';
+            document.getElementById('swapConfirmModal').classList.remove('show');
             pendingSwapAmount = 0;
         }
 
         async function confirmSwap() {
-            document.getElementById('swapConfirmModal').style.display = 'none';
+            document.getElementById('swapConfirmModal').classList.remove('show');
 
             if (!pendingSwapAmount || pendingSwapAmount <= 0) {
                 return;
@@ -2417,36 +2417,32 @@
     </script>
 
     <!-- Swap Confirmation Modal -->
-    <div id="swapConfirmModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); display:flex; align-items:center; justify-content:center; z-index:9999; backdrop-filter:blur(8px);">
-        <div style="background:#1a1614; border-radius:24px; padding:2.5rem; max-width:440px; width:90%; border:1px solid #2a2220; box-shadow:0 30px 60px rgba(0,0,0,0.9);">
-            <h3 style="color:#f0ece8; margin-bottom:1.5rem; text-align:center; font-size:1.3rem;">Confirm Swap</h3>
+    <div id="swapConfirmModal" class="swap-confirm-modal">
+        <div class="swap-confirm-modal-content">
+            <h3 class="swap-confirm-modal-title">Confirm Swap</h3>
 
-            <div style="margin-bottom:1.5rem;">
-                <div style="display:flex; justify-content:space-between; padding:0.75rem 0; border-bottom:1px solid #1f1a18;">
-                    <span style="color:#6b5f58;">You Pay</span>
-                    <span style="color:#f0ece8; font-weight:600;" id="confirmPayAmount">0 SOL</span>
+            <div class="swap-confirm-modal-details">
+                <div class="swap-confirm-modal-row">
+                    <span class="label">You Pay</span>
+                    <span class="value" id="confirmPayAmount">0 SOL</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; padding:0.75rem 0; border-bottom:1px solid #1f1a18;">
-                    <span style="color:#6b5f58;">You Receive</span>
-                    <span style="color:#14F195; font-weight:600;" id="confirmReceiveAmount">0 TREAT</span>
+                <div class="swap-confirm-modal-row">
+                    <span class="label">You Receive</span>
+                    <span class="value amount-receive" id="confirmReceiveAmount">0 TREAT</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; padding:0.75rem 0; border-bottom:1px solid #1f1a18;">
-                    <span style="color:#6b5f58;">Rate</span>
-                    <span style="color:#a89890;" id="confirmRate">1 SOL ≈ 0 TREAT</span>
+                <div class="swap-confirm-modal-row">
+                    <span class="label">Rate</span>
+                    <span class="value rate" id="confirmRate">1 SOL ≈ 0 TREAT</span>
                 </div>
-                <div style="display:flex; justify-content:space-between; padding:0.75rem 0;">
-                    <span style="color:#6b5f58;">Slippage</span>
-                    <span style="color:#a89890;">0.5%</span>
+                <div class="swap-confirm-modal-row">
+                    <span class="label">Slippage</span>
+                    <span class="value rate">0.5%</span>
                 </div>
             </div>
 
-            <div style="display:flex; gap:1rem;">
-                <button onclick="cancelSwapConfirm()" style="flex:1; padding:0.8rem; background:#1f1a18; border:1px solid #2a2220; border-radius:40px; color:#a89890; font-size:0.9rem; font-weight:600; cursor:pointer; transition:all 0.3s ease;" onmouseover="this.style.background='#2a2220'" onmouseout="this.style.background='#1f1a18'">
-                    Cancel
-                </button>
-                <button onclick="confirmSwap()" style="flex:2; padding:0.8rem; background:linear-gradient(135deg, #9945FF, #7a2be0); border:none; border-radius:40px; color:#fff; font-size:0.9rem; font-weight:700; cursor:pointer; transition:all 0.3s ease;" onmouseover="this.style.transform='scale(1.02)'" onmouseout="this.style.transform='scale(1)'">
-                    Confirm Swap
-                </button>
+            <div class="swap-confirm-modal-buttons">
+                <button class="cancel-btn" onclick="cancelSwapConfirm()">Cancel</button>
+                <button class="confirm-btn" onclick="confirmSwap()">Confirm Swap</button>
             </div>
         </div>
     </div>

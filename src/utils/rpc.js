@@ -2,7 +2,7 @@
 const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY;
 
 // RPC endpoints in order of preference
-// If Alchemy key is available, use it as primary endpoint
+// Prioritize endpoints that support subscriptions for better compatibility
 const RPC_ENDPOINTS = ALCHEMY_API_KEY
   ? [
       `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`,
@@ -11,10 +11,10 @@ const RPC_ENDPOINTS = ALCHEMY_API_KEY
       'https://solana-mainnet.rpc.extrnode.com',
     ]
   : [
-      'https://solana-mainnet.g.alchemy.com/v2/demo',
       'https://api.mainnet-beta.solana.com',
       'https://rpc.ankr.com/solana',
       'https://solana-mainnet.rpc.extrnode.com',
+      'https://solana-mainnet.g.alchemy.com/v2/demo',
     ];
 
 let currentEndpointIndex = 0;

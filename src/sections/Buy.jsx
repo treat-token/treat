@@ -101,7 +101,7 @@ export default function Buy({
 
   const handleSwap = async () => {
     setShowConfirmDialog(false);
-    
+
     if (!walletConnected) {
       showToast('❌ Not Connected', 'Please connect your wallet using the header button', 'error');
       return;
@@ -135,50 +135,77 @@ export default function Buy({
 
       // Create a simple transfer transaction (for demo - replace with actual swap logic)
       const fromPubkey = new PublicKey(walletAddress);
-      
+
       // Create a transaction
       const transaction = new Transaction();
-      
+
       // Add a memo instruction (for demo purposes)
       const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
       const memoText = `Swap ${amount} SOL for TREAT`;
       const memoData = new TextEncoder().encode(memoText);
-      
+
       // Note: This is a simplified example. In production, you'd use Jupiter or Raydium for actual swaps
       // For now, we'll just show the transaction flow
-      
+
       // Get latest blockhash
       const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = fromPubkey;
 
       console.log('📝 Requesting Phantom to sign and send transaction...');
-      
+
       // Use Phantom's native signAndSendTransaction
       const { signature } = await phantom.signAndSendTransaction(transaction);
-      
+
       console.log('✅ Transaction sent! Signature:', signature);
 
-      // Wait for confirmation
-      const confirmation = await connection.confirmTransaction(signature, 'confirmed');
-      console.log('✅ Transaction confirmed:', confirmation);
+      // Wait for confirmation using polling instead of subscriptions
+      // This avoids issues with RPC endpoints that don't support signatureSubscribe
+      let confirmed = false;
+      let attempts = 0;
+      const maxAttempts = 60; // 2 minutes with 2s intervals
 
-      showToast('✅ Swap Complete!', 
-        `Transaction: ${signature.slice(0, 8)}...${signature.slice(-8)}`, 
+      while (!confirmed && attempts < maxAttempts) {
+        try {
+          const status = await connection.getSignatureStatus(signature);
+          if (status.value) {
+            if (status.value.confirmationStatus === 'confirmed' || status.value.confirmationStatus === 'finalized') {
+              confirmed = true;
+              console.log('✅ Transaction confirmed:', status);
+            } else if (status.value.err) {
+              throw new Error(`Transaction failed: ${JSON.stringify(status.value.err)}`);
+            }
+          }
+        } catch (e) {
+          console.warn(`Confirmation check attempt ${attempts + 1}:`, e.message);
+        }
+
+        if (!confirmed) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          attempts++;
+        }
+      }
+
+      if (!confirmed) {
+        throw new Error('Transaction confirmation timeout. Check the signature on Solana Explorer to verify.');
+      }
+
+      showToast('✅ Swap Complete!',
+        `Transaction: ${signature.slice(0, 8)}...${signature.slice(-8)}`,
         'success'
       );
-      
+
       setSwapInput('');
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
-      
+
       // Refresh balances after swap
       if (window.refreshBalances) {
         await window.refreshBalances();
       }
     } catch (error) {
       console.error('Swap error:', error);
-      
+
       // Handle user rejection
       if (error.code === 4001 || error.message?.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');

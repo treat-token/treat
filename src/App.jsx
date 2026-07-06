@@ -16,8 +16,8 @@ import Toast from './components/Toast';
 import { getCurrentRpcEndpoint, getNextRpcEndpoint } from './utils/rpc';
 
 const NETWORK = WalletAdapterNetwork.Mainnet;
-// Primary endpoint will fallback to alternatives if needed
-const ENDPOINT = getCurrentRpcEndpoint();
+// Use official Solana RPC as primary for better token metadata support in Phantom
+const ENDPOINT = 'https://api.mainnet-beta.solana.com';
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
 // Log which endpoint is being used
@@ -126,13 +126,15 @@ function AppContent() {
 
   const fetchBalances = async (pubKeyStr) => {
     const pubKey = new PublicKey(pubKeyStr);
-    let attempts = 0;
-    const maxAttempts = 3;
+    const endpoints = [
+      ENDPOINT,
+      'https://rpc.ankr.com/solana',
+      'https://solana-mainnet.rpc.extrnode.com',
+    ];
 
-    while (attempts < maxAttempts) {
+    for (const endpoint of endpoints) {
       try {
-        const rpcEndpoint = attempts === 0 ? ENDPOINT : getNextRpcEndpoint();
-        const connection = new Connection(rpcEndpoint, 'confirmed');
+        const connection = new Connection(endpoint, 'processed');
 
         // Fetch SOL balance with timeout
         try {
@@ -164,22 +166,21 @@ function AppContent() {
             treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
           }
           setTreatBalance(treatBalance);
-          return; // Success, exit the retry loop
+          return; // Success, exit
         } catch (tokenError) {
           console.warn('Could not fetch TREAT balance:', tokenError.message);
           setTreatBalance(0);
-          return; // Don't retry token balance on error
+          return; // Don't retry on token error
         }
       } catch (error) {
-        console.warn(`Balance fetch attempt ${attempts + 1} failed:`, error.message);
-        attempts++;
-        if (attempts >= maxAttempts) {
-          setSolBalance(0);
-          setTreatBalance(0);
-          console.warn('All balance fetch attempts failed');
-        }
+        console.warn(`Balance fetch from ${endpoint} failed:`, error.message);
+        // Try next endpoint
       }
     }
+
+    setSolBalance(0);
+    setTreatBalance(0);
+    console.warn('All balance fetch endpoints failed');
   };
 
   const fetchPriceData = async () => {

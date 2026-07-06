@@ -53,7 +53,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             gap: 0.5rem;
         }
 
@@ -1107,29 +1107,42 @@
             body { padding-top: 65px; }
 
             .header { padding: 0.5rem 1rem; }
-            .header .brand { font-size: 1.2rem; }
+            .header-inner { gap: 0.3rem; }
+
+            .header .brand {
+                font-size: 1.2rem;
+                flex-shrink: 0;
+            }
             .header .brand img { width: 32px; height: 32px; }
-            
+
             .header .nav-right .cta {
                 font-size: 0.9rem;
                 padding: 0.3rem 0.6rem;
+                flex-shrink: 0;
             }
 
             .dropdown .dropbtn {
                 font-size: 0.9rem;
                 padding: 0.3rem 0.6rem;
+                flex-shrink: 0;
             }
 
             .header-wallet-status {
                 font-size: 0.6rem;
                 gap: 0.5rem;
+                min-width: 0;
+                flex-shrink: 1;
             }
             .header-wallet-status .wallet-addr {
                 font-size: 0.6rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             .header-wallet-status .disconnect-btn {
                 font-size: 0.5rem;
                 padding: 0.15rem 0.6rem;
+                flex-shrink: 0;
             }
 
             .hero { padding: 2rem 1.5rem; }
@@ -1181,29 +1194,40 @@
         @media (max-width: 480px) {
             body { padding-top: 60px; }
 
-            .header .brand { font-size: 1rem; }
+            .header .brand {
+                font-size: 1rem;
+                flex-shrink: 0;
+            }
             .header .brand img { width: 28px; height: 28px; }
-            
+
             .header .nav-right .cta {
                 font-size: 0.8rem;
                 padding: 0.2rem 0.5rem;
+                flex-shrink: 0;
             }
 
             .dropdown .dropbtn {
                 font-size: 0.8rem;
                 padding: 0.2rem 0.5rem;
+                flex-shrink: 0;
             }
 
             .header-wallet-status {
                 font-size: 0.5rem;
                 gap: 0.3rem;
+                min-width: 0;
+                flex-shrink: 1;
             }
             .header-wallet-status .wallet-addr {
                 font-size: 0.5rem;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
             .header-wallet-status .disconnect-btn {
                 font-size: 0.45rem;
                 padding: 0.1rem 0.4rem;
+                flex-shrink: 0;
             }
 
             .hero { padding: 1.5rem 1rem; border-radius: 24px; }
@@ -1265,10 +1289,30 @@
         }
 
         @media (max-width: 380px) {
-            .header .brand { font-size: 0.85rem; }
+            .header .brand {
+                font-size: 0.85rem;
+                flex-shrink: 0;
+            }
             .header .brand img { width: 24px; height: 24px; }
-            .header .nav-right .cta { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
-            .dropdown .dropbtn { font-size: 0.7rem; padding: 0.15rem 0.4rem; }
+            .header .nav-right .cta {
+                font-size: 0.7rem;
+                padding: 0.15rem 0.4rem;
+                flex-shrink: 0;
+            }
+            .dropdown .dropbtn {
+                font-size: 0.7rem;
+                padding: 0.15rem 0.4rem;
+                flex-shrink: 0;
+            }
+            .header-wallet-status {
+                flex-shrink: 1;
+                min-width: 0;
+            }
+            .header-wallet-status .wallet-addr {
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
             .hero-text h1 { font-size: 1.6rem; }
             .card { padding: 1rem; }
             .swap-card .swap-box .swap-input-row input { font-size: 0.9rem; }
@@ -2070,7 +2114,7 @@
             try {
                 // Get SOL balance using Solana connection
                 const connection = new window.solanaWeb3.Connection(
-                    'https://api.mainnet-beta.solana.com',
+                    'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA',
                     'confirmed'
                 );
 
@@ -2083,7 +2127,7 @@
                 try {
                     // Create a connection to Solana mainnet
                     const connection = new window.solanaWeb3.Connection(
-                        'https://api.mainnet-beta.solana.com',
+                        'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA',
                         'confirmed'
                     );
 
@@ -2278,7 +2322,7 @@
 
                 // Wait for confirmation
                 const connection = new window.solanaWeb3.Connection(
-                    'https://api.mainnet-beta.solana.com',
+                    'https://solana-mainnet.g.alchemy.com/v2/k5jwTvMDFEvbPGj5yreGA',
                     'confirmed'
                 );
 

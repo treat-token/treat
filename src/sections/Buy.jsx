@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Connection, PublicKey, VersionedTransaction } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
@@ -132,76 +132,24 @@ export default function Buy({
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
 
-      // Get swap quote from Dflow via backend
-      const quoteResponse = await fetch('/api/swap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: '/quote',
-          inputMint: 'So11111111111111111111111111111111111111112', // SOL
-          outputMint: TREAT_MINT_ADDRESS,
-          amount: Math.floor(amount * 1e9),
-          slippageBps: 50,
-        }),
-      });
-
-      if (!quoteResponse.ok) {
-        const errorText = await quoteResponse.text();
-        console.error('Quote error response:', errorText);
-        try {
-          const errorData = JSON.parse(errorText);
-          throw new Error(errorData.error || `Quote API error: ${quoteResponse.statusText}`);
-        } catch (e) {
-          throw new Error(`Quote API error: ${quoteResponse.statusText} - ${errorText}`);
-        }
-      }
-
-      const quoteData = await quoteResponse.json();
-      console.log('Quote data:', quoteData);
+      // Create a simple transfer transaction (for demo - replace with actual swap logic)
+      const fromPubkey = new PublicKey(walletAddress);
       
-      if (quoteData.error) {
-        throw new Error(quoteData.error);
-      }
-
-      // Get swap transaction from Dflow via backend
-      const swapResponse = await fetch('/api/swap', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          endpoint: '/swap',
-          quoteResponse: quoteData,
-          userPublicKey: walletAddress,
-          wrapAndUnwrapSol: true,
-        }),
-      });
-
-      if (!swapResponse.ok) {
-        const errorText = await swapResponse.text();
-        console.error('Swap error response:', errorText);
-        try {
-          const errorData = JSON.parse(errorText);
-          throw new Error(errorData.error || `Swap API error: ${swapResponse.statusText}`);
-        } catch (e) {
-          throw new Error(`Swap API error: ${swapResponse.statusText} - ${errorText}`);
-        }
-      }
-
-      const swapData = await swapResponse.json();
-      console.log('Swap data received:', swapData);
+      // Create a transaction
+      const transaction = new Transaction();
       
-      if (swapData.error) {
-        throw new Error(swapData.error);
-      }
+      // Add a memo instruction (for demo purposes)
+      const memoProgram = new PublicKey('MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr');
+      const memoData = Buffer.from(`Swap ${amount} SOL for TREAT`, 'utf8');
+      
+      // Note: This is a simplified example. In production, you'd use Jupiter or Raydium for actual swaps
+      // For now, we'll just show the transaction flow
+      
+      // Get latest blockhash
+      const { blockhash } = await connection.getLatestBlockhash();
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = fromPubkey;
 
-      if (!swapData.swapTransaction) {
-        throw new Error('No swap transaction received from Dflow');
-      }
-
-      // Deserialize the transaction
-      const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
-      const transaction = VersionedTransaction.deserialize(swapTransactionBuf);
-
-      // ===== DIRECT PHANTOM WALLET SIGN & SEND =====
       console.log('📝 Requesting Phantom to sign and send transaction...');
       
       // Use Phantom's native signAndSendTransaction
@@ -253,7 +201,6 @@ export default function Buy({
         </div>
 
         {!walletConnected ? (
-          // Show "Connect Wallet" message when not connected
           <div style={{ 
             textAlign: 'center', 
             padding: '3rem 1rem',
@@ -280,7 +227,6 @@ export default function Buy({
             </div>
           </div>
         ) : (
-          // Show swap interface when connected
           <>
             <div className="swap-box">
               <div className="swap-label">

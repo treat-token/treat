@@ -9,10 +9,14 @@ export const onRequest = async (context) => {
     const body = await request.json();
     const { endpoint, ...payload } = body;
 
-    const dflowApiKey = env.DFLOW_API_KEY;
+    const dflowApiKey = env.DFLOW_API_KEY || context.env?.DFLOW_API_KEY;
+
     if (!dflowApiKey) {
       return new Response(
-        JSON.stringify({ error: 'DFLOW_API_KEY is not configured' }),
+        JSON.stringify({
+          error: 'DFLOW_API_KEY is not configured',
+          available_env: Object.keys(env || {})
+        }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }

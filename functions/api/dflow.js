@@ -1,10 +1,11 @@
+// functions/api/dflow.js
 export async function onRequest(context) {
   const { request } = context;
   
-  // Get API keys from Cloudflare environment variables
+  // Get API key from Cloudflare environment variables
   const DFLOW_API_KEY = context.env.DFLOW_API_KEY || context.env.REACT_APP_DFLOW_API_KEY;
-  const DFLOW_API = 'https://api.dflow.net/v1';
-  
+  const DFLOW_API = 'https://quote-api.dflow.net'; // Production endpoint
+
   // Handle OPTIONS request for CORS
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -12,7 +13,7 @@ export async function onRequest(context) {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-api-key',
         'Access-Control-Max-Age': '86400',
       }
     });
@@ -21,9 +22,10 @@ export async function onRequest(context) {
   try {
     // Check if API key is available
     if (!DFLOW_API_KEY) {
-      console.error('Dflow API key is missing!');
+      console.error('DFLOW_API_KEY is missing in environment variables');
       return new Response(JSON.stringify({ 
-        error: 'Dflow API key is not configured in Cloudflare environment variables'
+        error: 'API key not configured',
+        message: 'DFLOW_API_KEY is missing in Cloudflare environment variables'
       }), {
         status: 500,
         headers: {
@@ -33,7 +35,7 @@ export async function onRequest(context) {
       });
     }
 
-    // Read the request body with better error handling
+    // Parse request body
     let body;
     try {
       const text = await request.text();
@@ -54,36 +56,66 @@ export async function onRequest(context) {
         }
       });
     }
-    
-    console.log('Request body:', body);
-    
-    // Determine which endpoint to call
-    const endpoint = body.endpoint || 'quote';
-    const url = `${DFLOW_API}/${endpoint}`;
-    
-    console.log('Calling Dflow API:', url);
 
-    // Forward the request to Dflow API
-    const response = await fetch(url, {
-      method: 'POST',
+    const { endpoint, method = 'GET', data } = body;
+    
+    if (!endpoint) {
+      return new Response(JSON.stringify({ 
+        error: 'Missing endpoint',
+        message: 'You must specify an endpoint (quote or swap)'
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+
+    // Build the URL with query parameters for GET requests
+    let url = `${DFLOW_API}/${endpoint}`;
+    if (method.toUpperCase() === 'GET' && data) {
+      const params = new URLSearchParams(data);
+      url += `?${params.toString()}`;
+    }
+
+    console.log(`Calling DFlow ${method} ${url}`);
+
+    // Prepare fetch options
+    const fetchOptions = {
+      method: method.toUpperCase(),
       headers: {
         'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${DFLOW_API_KEY}`,
+        'x-api-key': DFLOW_API_KEY,
       },
-      body: JSON.stringify(body.data)
-    });
+    };
 
-    console.log('Dflow API response status:', response.status);
+    // Add body for POST requests
+    if (method.toUpperCase() === 'POST') {
+      fetchOptions.headers['Content-Type'] = 'application/json';
+      fetchOptions.body = JSON.stringify(data);
+    }
 
+    // Forward the request to DFlow API
+    const response = await fetch(url, fetchOptions);
+
+    console.log(`DFlow API response status: ${response.status}`);
+
+    // Handle error responses
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Dflow API error response:', errorText);
+      let errorText;
+      try {
+        errorText = await response.text();
+      } catch {
+        errorText = 'Unable to read error response';
+      }
+      
+      console.error('DFlow API error:', errorText);
       
       return new Response(JSON.stringify({ 
-        error: `Dflow API error: ${response.status}`,
-        details: errorText,
-        status: response.status
+        error: `DFlow API error: ${response.status}`,
+        status: response.status,
+        details: errorText
       }), {
         status: response.status,
         headers: {
@@ -93,10 +125,9 @@ export async function onRequest(context) {
       });
     }
 
-    const data = await response.json();
-    console.log('Dflow API success');
-    
-    return new Response(JSON.stringify(data), {
+    // Return successful response
+    const responseData = await response.json();
+    return new Response(JSON.stringify(responseData), {
       status: 200,
       headers: {
         'Content-Type': 'application/json',
@@ -105,7 +136,7 @@ export async function onRequest(context) {
     });
 
   } catch (error) {
-    console.error('Function error:', error);
+    console.error('Cloudflare Function error:', error);
     return new Response(JSON.stringify({ 
       error: 'Internal server error',
       message: error.message,

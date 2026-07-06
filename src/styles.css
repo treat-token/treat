@@ -784,6 +784,11 @@ body {
   color: #4a3f3a;
 }
 
+.swap-card .swap-box .swap-input-row input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .swap-card .swap-box .swap-input-row .token-select {
   display: flex;
   align-items: center;
@@ -821,7 +826,7 @@ body {
 
 .swap-card .swap-box .balance-info {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   font-size: 0.65rem;
   color: #6b5f58;
   margin-top: 0.2rem;
@@ -831,7 +836,6 @@ body {
   color: #14F195;
   cursor: pointer;
   font-weight: 600;
-  margin-left: 0.5rem;
   transition: opacity 0.3s ease;
 }
 
@@ -847,48 +851,7 @@ body {
   padding: 0.2rem 0;
 }
 
-/* Connect Wallet Button */
-.swap-card .connect-btn {
-  width: 100%;
-  padding: 1rem;
-  background: linear-gradient(135deg, #14F195, #0cb87a);
-  border: none;
-  border-radius: 40px;
-  color: #0a0a0a;
-  font-size: 1rem;
-  font-weight: 700;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  font-family: inherit;
-  letter-spacing: 0.5px;
-  margin-top: 0.5rem;
-}
-
-.swap-card .connect-btn:hover {
-  transform: scale(1.02);
-  box-shadow: 0 0 30px rgba(20, 241, 149, 0.3);
-}
-
-.swap-card .connect-btn:active {
-  transform: scale(0.98);
-}
-
-.swap-card .connect-btn.connected {
-  background: #1a1614;
-  border: 1px solid #14F195;
-  color: #14F195;
-}
-
-.swap-card .connect-btn .wallet-address {
-  font-size: 0.7rem;
-  font-weight: 400;
-  color: #a89890;
-  display: block;
-  margin-top: 0.2rem;
-  -webkit-text-fill-color: #a89890;
-}
-
-/* Swap Button */
+/* Swap Button - ONLY SWAP BUTTON, NO CONNECT BUTTON */
 .swap-card .swap-btn {
   width: 100%;
   padding: 1rem;
@@ -905,12 +868,12 @@ body {
   margin-top: 0.5rem;
 }
 
-.swap-card .swap-btn:hover {
+.swap-card .swap-btn:hover:not(:disabled) {
   transform: scale(1.02);
   box-shadow: 0 0 30px rgba(153, 69, 255, 0.3);
 }
 
-.swap-card .swap-btn:active {
+.swap-card .swap-btn:active:not(:disabled) {
   transform: scale(0.98);
 }
 
@@ -1304,7 +1267,6 @@ body {
   .swap-card .swap-box .swap-input-row .token-select { padding: 0.15rem 0.5rem 0.15rem 0.3rem; }
   .swap-card .swap-box .swap-input-row .token-select img { width: 18px; height: 18px; }
   .swap-card .swap-box .swap-input-row .token-select .token-symbol { font-size: 0.7rem; }
-  .swap-card .connect-btn { padding: 0.8rem; font-size: 0.9rem; }
   .swap-card .swap-btn { padding: 0.8rem; font-size: 0.9rem; }
 
   .price-ticker { gap: 0.5rem; padding: 0.3rem 0.8rem; }

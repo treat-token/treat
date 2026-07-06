@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Connection, PublicKey, Transaction } from '@solana/web3.js';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
-const JUPITER_API = 'https://quote-api.jup.ag/v6';
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const DFLOW_API = 'https://api.dflow.net/v1';
 
 export default function Buy({ 
   walletConnected, 
@@ -25,7 +26,7 @@ export default function Buy({
     ? `https://solana-mainnet.g.alchemy.com/v2/${process.env.REACT_APP_ALCHEMY_API_KEY}`
     : 'https://api.mainnet-beta.solana.com';
   
-  const JUPITER_API_KEY = process.env.REACT_APP_JUPITER_API_KEY || process.env.JUPITER_API_KEY;
+  const DFLOW_API_KEY = process.env.REACT_APP_DFLOW_API_KEY || 'dflow_7sfp9Mfd_sfuhLXdaISiFNc0PaEgPNmtt1TtuSARm';
 
   useEffect(() => {
     fetchSolPrice();
@@ -103,79 +104,80 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
-  const getJupiterQuote = async (amount) => {
-    const url = `${JUPITER_API}/quote?inputMint=So11111111111111111111111111111111111111112&outputMint=${TREAT_MINT_ADDRESS}&amount=${amount}&slippageBps=50`;
+  // Dflow API Functions
+  const getDflowQuote = async (amount) => {
+    const url = `${DFLOW_API}/quote`;
     
-    console.log('Fetching quote from Jupiter...');
-    
-    const headers = {
-      'Accept': 'application/json',
-    };
-    
-    // Add API key if available
-    if (JUPITER_API_KEY) {
-      headers['x-api-key'] = JUPITER_API_KEY;
-    }
+    console.log('Fetching quote from Dflow...');
+    console.log('From:', SOL_MINT);
+    console.log('To:', TREAT_MINT_ADDRESS);
+    console.log('Amount:', amount);
     
     const response = await fetch(url, {
-      method: 'GET',
-      headers: headers,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Quote API error response:', errorText);
-      
-      if (response.status === 429) {
-        throw new Error('Rate limited. Please wait a moment and try again.');
-      }
-      throw new Error(`Quote API error: ${response.status} ${response.statusText}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data || !data.routePlan) {
-      console.error('Invalid quote response:', data);
-      throw new Error('No route found for swap - token might not have liquidity');
-    }
-
-    return data;
-  };
-
-  const getJupiterSwap = async (quoteResponse) => {
-    const headers = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-    };
-    
-    // Add API key if available
-    if (JUPITER_API_KEY) {
-      headers['x-api-key'] = JUPITER_API_KEY;
-    }
-    
-    const response = await fetch(`${JUPITER_API}/swap`, {
       method: 'POST',
-      headers: headers,
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DFLOW_API_KEY}`,
+      },
       body: JSON.stringify({
-        quoteResponse: quoteResponse,
-        userPublicKey: walletAddress,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: 'auto'
+        from: SOL_MINT,
+        to: TREAT_MINT_ADDRESS,
+        amount: amount.toString(),
+        slippage: 0.5,
       })
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Swap API error response:', errorText);
+      console.error('Dflow quote error:', errorText);
       
       if (response.status === 429) {
         throw new Error('Rate limited. Please wait a moment and try again.');
       }
-      throw new Error(`Swap API error: ${response.status} ${response.statusText}`);
+      throw new Error(`Quote error: ${response.status} - ${errorText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    console.log('✅ Quote received:', data);
+    
+    if (!data || !data.quote) {
+      throw new Error('No quote received from Dflow');
+    }
+
+    return data;
+  };
+
+  const getDflowSwap = async (quoteData) => {
+    const url = `${DFLOW_API}/swap`;
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${DFLOW_API_KEY}`,
+      },
+      body: JSON.stringify({
+        quote: quoteData.quote,
+        wallet: walletAddress,
+        slippage: 0.5,
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Dflow swap error:', errorText);
+      
+      if (response.status === 429) {
+        throw new Error('Rate limited. Please wait a moment and try again.');
+      }
+      throw new Error(`Swap error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Swap transaction received');
+    return data;
   };
 
   const handleSwap = async () => {
@@ -207,7 +209,7 @@ export default function Buy({
       const phantom = window.phantom.solana;
       const connection = new Connection(RPC_ENDPOINT, 'confirmed');
       
-      console.log('🔄 Starting swap with Jupiter...');
+      console.log('🔄 Starting swap with Dflow...');
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
       console.log('Using RPC:', RPC_ENDPOINT.substring(0, 50) + '...');
@@ -215,32 +217,38 @@ export default function Buy({
       // Convert SOL to lamports (1 SOL = 1e9 lamports)
       const amountInLamports = Math.floor(amount * 1e9);
       
-      // 1. Get quote from Jupiter
+      // 1. Get quote from Dflow
       let quoteData;
       try {
-        quoteData = await getJupiterQuote(amountInLamports);
+        quoteData = await getDflowQuote(amountInLamports);
         console.log('📊 Quote received:', quoteData);
+        
+        // Update output with actual quote
+        if (quoteData.quote && quoteData.quote.outAmount) {
+          const outAmount = parseFloat(quoteData.quote.outAmount) / 1e6; // Adjust decimals for TREAT
+          setSwapOutput(outAmount.toFixed(4));
+        }
       } catch (quoteError) {
         console.error('Quote error:', quoteError);
-        throw new Error('Could not get swap quote. Make sure TREAT token has liquidity on Solana DEXs.');
+        throw new Error(`Could not get swap quote: ${quoteError.message}`);
       }
 
-      // 2. Get swap transaction
+      // 2. Get swap transaction from Dflow
       let swapData;
       try {
-        swapData = await getJupiterSwap(quoteData);
+        swapData = await getDflowSwap(quoteData);
         console.log('📝 Swap transaction received');
       } catch (swapError) {
         console.error('Swap transaction error:', swapError);
-        throw new Error('Could not create swap transaction');
+        throw new Error(`Could not create swap transaction: ${swapError.message}`);
       }
 
-      if (!swapData || !swapData.swapTransaction) {
-        throw new Error('No swap transaction received from Jupiter');
+      if (!swapData || !swapData.transaction) {
+        throw new Error('No swap transaction received from Dflow');
       }
 
       // 3. Deserialize the transaction
-      const swapTransactionBuf = Buffer.from(swapData.swapTransaction, 'base64');
+      const swapTransactionBuf = Buffer.from(swapData.transaction, 'base64');
       const transaction = Transaction.from(swapTransactionBuf);
 
       console.log('📝 Requesting Phantom to sign and send transaction...');
@@ -291,11 +299,13 @@ export default function Buy({
       }
 
       // 6. Get the actual output amount
-      const outputAmount = parseFloat(swapData.outAmount || swapOutput) / 1e6;
-      
+      const outputAmount = swapData.outAmount 
+        ? parseFloat(swapData.outAmount) / 1e6 
+        : parseFloat(swapOutput);
+
       showToast(
-        '✅ Swap Complete!',
-        `Swapped ${amount} SOL for ${outputAmount.toFixed(4)} TREAT`,
+        '✅ Swap Complete! 🎉',
+        `Successfully swapped ${amount} SOL for ${outputAmount.toFixed(4)} TREAT`,
         'success'
       );
 
@@ -305,7 +315,9 @@ export default function Buy({
 
       // Refresh balances
       if (window.refreshBalances) {
-        await window.refreshBalances();
+        setTimeout(async () => {
+          await window.refreshBalances();
+        }, 2000);
       }
 
     } catch (error) {
@@ -315,14 +327,16 @@ export default function Buy({
       
       if (errorMessage.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
-      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity')) {
-        showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap', 'error');
+      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
+        showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
       } else if (errorMessage.includes('timeout')) {
         showToast('❌ Timeout', 'Transaction took too long. Check explorer for status.', 'error');
       } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
         showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
-      } else if (errorMessage.includes('API key')) {
-        showToast('❌ API Key Error', 'Invalid or missing Jupiter API key', 'error');
+      } else if (errorMessage.includes('API key') || errorMessage.includes('authorization')) {
+        showToast('❌ API Key Error', 'Invalid or missing Dflow API key', 'error');
+      } else if (errorMessage.includes('insufficient balance')) {
+        showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }

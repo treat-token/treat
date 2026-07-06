@@ -5,10 +5,6 @@ export async function onRequest(context) {
   const DFLOW_API_KEY = context.env.DFLOW_API_KEY || context.env.REACT_APP_DFLOW_API_KEY;
   const DFLOW_API = 'https://api.dflow.net/v1';
   
-  console.log('Dflow API Function called');
-  console.log('API Key present:', !!DFLOW_API_KEY);
-  console.log('Request method:', request.method);
-
   // Handle OPTIONS request for CORS
   if (request.method === 'OPTIONS') {
     return new Response(null, {
@@ -23,17 +19,6 @@ export async function onRequest(context) {
   }
 
   try {
-    // Get the request body
-    const body = await request.json();
-    console.log('Request body:', body);
-    
-    // Determine which endpoint to call
-    const endpoint = body.endpoint || 'quote';
-    const url = `${DFLOW_API}/${endpoint}`;
-    
-    console.log('Calling Dflow API:', url);
-    console.log('Data:', JSON.stringify(body.data, null, 2));
-
     // Check if API key is available
     if (!DFLOW_API_KEY) {
       console.error('Dflow API key is missing!');
@@ -47,6 +32,36 @@ export async function onRequest(context) {
         }
       });
     }
+
+    // Read the request body with better error handling
+    let body;
+    try {
+      const text = await request.text();
+      if (!text) {
+        throw new Error('Request body is empty');
+      }
+      body = JSON.parse(text);
+    } catch (parseError) {
+      console.error('Failed to parse request body:', parseError);
+      return new Response(JSON.stringify({ 
+        error: 'Invalid request body',
+        message: 'Request body must be valid JSON'
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+    
+    console.log('Request body:', body);
+    
+    // Determine which endpoint to call
+    const endpoint = body.endpoint || 'quote';
+    const url = `${DFLOW_API}/${endpoint}`;
+    
+    console.log('Calling Dflow API:', url);
 
     // Forward the request to Dflow API
     const response = await fetch(url, {
@@ -79,7 +94,7 @@ export async function onRequest(context) {
     }
 
     const data = await response.json();
-    console.log('Dflow API success response:', data);
+    console.log('Dflow API success');
     
     return new Response(JSON.stringify(data), {
       status: 200,

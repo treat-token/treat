@@ -42,13 +42,38 @@ function AppContent() {
 
   useEffect(() => {
     checkWalletConnection();
+
+    // Listen for Phantom connection changes
+    const handleConnect = () => {
+      checkWalletConnection();
+    };
+
+    const handleDisconnect = () => {
+      setWalletAddress('');
+      setWalletConnected(false);
+      setSolBalance(0);
+      setTreatBalance(0);
+    };
+
+    if (window.phantom?.solana) {
+      window.phantom.solana.on('connect', handleConnect);
+      window.phantom.solana.on('disconnect', handleDisconnect);
+
+      return () => {
+        window.phantom.solana.off('connect', handleConnect);
+        window.phantom.solana.off('disconnect', handleDisconnect);
+      };
+    }
   }, []);
 
   const checkWalletConnection = async () => {
+    // Wait a bit for Phantom to load
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     if (window.phantom?.solana?.isPhantom) {
       try {
         const phantom = window.phantom.solana;
-        if (phantom.isConnected) {
+        if (phantom.isConnected && phantom.publicKey) {
           const pubKey = phantom.publicKey.toString();
           setWalletAddress(pubKey);
           setWalletConnected(true);

@@ -13,14 +13,14 @@ import FAQ from './sections/FAQ';
 import Buy from './sections/Buy';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
-import { getCurrentRpcEndpoint, getNextRpcEndpoint } from './utils/rpc';
 
 const NETWORK = WalletAdapterNetwork.Mainnet;
-// Use official Solana RPC as primary for better token metadata support in Phantom
-const ENDPOINT = 'https://api.mainnet-beta.solana.com';
+// Use Alchemy RPC with API key from environment
+const ALCHEMY_API_KEY = process.env.REACT_APP_ALCHEMY_API_KEY || process.env.ALCHEMY_API_KEY;
+const ENDPOINT = `https://solana-mainnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 
-// Log which endpoint is being used
+// Log which endpoint is being used (hide API key)
 console.log('Using RPC Endpoint:', ENDPOINT.split('/').slice(0, 3).join('/') + '/...');
 
 const wallets = [new PhantomWalletAdapter()];
@@ -33,6 +33,7 @@ function AppContent() {
   const [treatPrice, setTreatPrice] = useState(0);
   const [toast, setToast] = useState(null);
   const [walletConnected, setWalletConnected] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type });
@@ -97,6 +98,7 @@ function AppContent() {
     }
 
     try {
+      setIsLoading(true);
       const phantom = window.phantom.solana;
       const response = await phantom.connect();
       const pubKey = response.publicKey.toString();
@@ -106,6 +108,8 @@ function AppContent() {
       showToast('✅ Connected', `Connected to ${pubKey.slice(0, 6)}...${pubKey.slice(-6)}`, 'success');
     } catch (error) {
       showToast('❌ Connection Failed', error.message || 'Failed to connect wallet', 'error');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -126,61 +130,50 @@ function AppContent() {
 
   const fetchBalances = async (pubKeyStr) => {
     const pubKey = new PublicKey(pubKeyStr);
-    const endpoints = [
-      ENDPOINT,
-      'https://rpc.ankr.com/solana',
-      'https://solana-mainnet.rpc.extrnode.com',
-    ];
+    
+    try {
+      // Use Alchemy RPC with higher commitment for reliability
+      const connection = new Connection(ENDPOINT, 'confirmed');
 
-    for (const endpoint of endpoints) {
+      // Fetch SOL balance with timeout
       try {
-        const connection = new Connection(endpoint, 'processed');
-
-        // Fetch SOL balance with timeout
-        try {
-          const solBalance = await Promise.race([
-            connection.getBalance(pubKey),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('SOL balance fetch timeout')), 3000)
-            )
-          ]);
-          setSolBalance(solBalance / 1e9);
-        } catch (solError) {
-          console.warn('Could not fetch SOL balance:', solError.message);
-          setSolBalance(0);
-        }
-
-        // Fetch TREAT token balance with timeout
-        try {
-          const tokenAccounts = await Promise.race([
-            connection.getParsedTokenAccountsByOwner(pubKey, {
-              mint: new PublicKey(TREAT_MINT_ADDRESS),
-            }),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error('Token balance fetch timeout')), 3000)
-            )
-          ]);
-
-          let treatBalance = 0;
-          if (tokenAccounts.value && tokenAccounts.value.length > 0) {
-            treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
-          }
-          setTreatBalance(treatBalance);
-          return; // Success, exit
-        } catch (tokenError) {
-          console.warn('Could not fetch TREAT balance:', tokenError.message);
-          setTreatBalance(0);
-          return; // Don't retry on token error
-        }
-      } catch (error) {
-        console.warn(`Balance fetch from ${endpoint} failed:`, error.message);
-        // Try next endpoint
+        const solBalance = await Promise.race([
+          connection.getBalance(pubKey),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('SOL balance fetch timeout')), 5000)
+          )
+        ]);
+        setSolBalance(solBalance / 1e9);
+      } catch (solError) {
+        console.warn('Could not fetch SOL balance:', solError.message);
+        setSolBalance(0);
       }
-    }
 
-    setSolBalance(0);
-    setTreatBalance(0);
-    console.warn('All balance fetch endpoints failed');
+      // Fetch TREAT token balance with timeout
+      try {
+        const tokenAccounts = await Promise.race([
+          connection.getParsedTokenAccountsByOwner(pubKey, {
+            mint: new PublicKey(TREAT_MINT_ADDRESS),
+          }),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Token balance fetch timeout')), 5000)
+          )
+        ]);
+
+        let treatBalance = 0;
+        if (tokenAccounts.value && tokenAccounts.value.length > 0) {
+          treatBalance = tokenAccounts.value[0].account.data.parsed.info.tokenAmount.uiAmount || 0;
+        }
+        setTreatBalance(treatBalance);
+      } catch (tokenError) {
+        console.warn('Could not fetch TREAT balance:', tokenError.message);
+        setTreatBalance(0);
+      }
+    } catch (error) {
+      console.warn('Balance fetch failed:', error.message);
+      setSolBalance(0);
+      setTreatBalance(0);
+    }
   };
 
   const fetchPriceData = async () => {
@@ -220,6 +213,7 @@ function AppContent() {
       treatBalance={treatBalance}
       treatPrice={treatPrice}
       showToast={showToast}
+      isLoading={isLoading}
     />,
   };
 
@@ -232,6 +226,7 @@ function AppContent() {
         walletAddress={walletAddress}
         onConnect={connectWallet}
         onDisconnect={disconnectWallet}
+        isLoading={isLoading}
       />
 
       <div className="container">
@@ -261,6 +256,11 @@ function AppContent() {
 }
 
 export default function App() {
+  // Check if API key exists
+  if (!process.env.REACT_APP_ALCHEMY_API_KEY && !process.env.ALCHEMY_API_KEY) {
+    console.warn('Alchemy API key not found in environment variables!');
+  }
+
   return (
     <ConnectionProvider endpoint={ENDPOINT}>
       <WalletProvider wallets={wallets} autoConnect>

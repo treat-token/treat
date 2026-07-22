@@ -122,30 +122,26 @@ export default function Header({
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const isConnectingRef = useRef(false);
+  const hasRestoredRef = useRef(false);
 
-  // Check for existing connection on mount - ONLY ONCE
+  // NO AUTO-CONNECT on mount - just check if already connected from session
   useEffect(() => {
+    // Only check for existing connection, don't auto-connect
+    // This just sets the initial state if the user already had a session
     const stored = localStorage.getItem('fixorium_connection');
-    if (stored && !walletConnected) {
+    if (stored && !walletConnected && !hasRestoredRef.current) {
       try {
         const data = JSON.parse(stored);
         if (data.publicKey) {
-          // Only restore if not already connecting
-          if (!isConnectingRef.current) {
-            isConnectingRef.current = true;
-            fixoriumWallet.publicKey = data.publicKey;
-            fixoriumWallet.isConnected = true;
-            if (onConnect) {
-              onConnect('fixorium');
-            }
-            setTimeout(() => {
-              isConnectingRef.current = false;
-            }, 1000);
-          }
+          // Just restore the state without triggering a new connection
+          hasRestoredRef.current = true;
+          // The parent component already has the connection state from localStorage
+          // No need to call onConnect again
+          console.log('✅ Fixorium wallet session found');
         }
       } catch (e) {}
     }
-  }, []); // Empty dependency array - runs only once
+  }, []); // Empty dependency - runs only once
 
   const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
 
@@ -165,7 +161,6 @@ export default function Header({
   };
 
   const handleConnectPhantom = async () => {
-    // Prevent multiple connection attempts
     if (isConnectingRef.current) return;
     isConnectingRef.current = true;
     setIsConnecting(true);
@@ -195,7 +190,6 @@ export default function Header({
   };
 
   const handleConnectFixorium = async () => {
-    // Prevent multiple connection attempts
     if (isConnectingRef.current) return;
     isConnectingRef.current = true;
     setIsConnecting(true);

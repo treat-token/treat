@@ -20,14 +20,12 @@ export async function onRequest(context) {
   }
 
   try {
-    // Check if API key is available and not a placeholder
+    // Check if API key is available
     if (!DFLOW_API_KEY || DFLOW_API_KEY.includes('REPLACE_ENV')) {
       console.error('❌ DFLOW_API_KEY is not properly configured');
-      console.error('Current value:', DFLOW_API_KEY);
-      console.error('Please set DFLOW_API_KEY in Cloudflare environment variables');
       return new Response(JSON.stringify({ 
         error: 'API key not configured',
-        message: 'DFLOW_API_KEY must be set in Cloudflare environment. Current value contains placeholder or is missing.'
+        message: 'DFLOW_API_KEY must be set in Cloudflare environment'
       }), {
         status: 500,
         headers: {
@@ -74,11 +72,36 @@ export async function onRequest(context) {
       });
     }
 
-    // Build the URL with query parameters for GET requests
-    let url = `${DFLOW_API}/${endpoint}`;
+    // ✅ FIX: Add /v1/ prefix to the endpoint
+    const DFLOW_ENDPOINTS = {
+      quote: '/v1/quote',
+      swap: '/v1/swap',
+    };
+
+    const endpointPath = DFLOW_ENDPOINTS[endpoint];
+    if (!endpointPath) {
+      return new Response(JSON.stringify({ 
+        error: 'Invalid endpoint',
+        message: `Endpoint "${endpoint}" not supported. Use "quote" or "swap".`
+      }), {
+        status: 400,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        }
+      });
+    }
+
+    // Build the URL with the correct path
+    let url = `${DFLOW_API}${endpointPath}`;
+    
+    // For GET requests, append query parameters
     if (method.toUpperCase() === 'GET' && data) {
       const params = new URLSearchParams(data);
-      url += `?${params.toString()}`;
+      const queryString = params.toString();
+      if (queryString) {
+        url += `?${queryString}`;
+      }
     }
 
     console.log(`\n📤 DFlow API Request:`);
@@ -102,7 +125,6 @@ export async function onRequest(context) {
     if (method.toUpperCase() === 'POST') {
       fetchOptions.headers['Content-Type'] = 'application/json';
       fetchOptions.body = JSON.stringify(data);
-      console.log(`Body:`, data);
     }
 
     // Forward the request to DFlow API
@@ -113,13 +135,8 @@ export async function onRequest(context) {
     // Handle error responses
     if (!response.ok) {
       let errorText;
-      let errorJson = null;
       try {
-        const text = await response.text();
-        errorText = text;
-        try {
-          errorJson = JSON.parse(text);
-        } catch {}
+        errorText = await response.text();
       } catch {
         errorText = 'Unable to read error response';
       }
@@ -127,20 +144,14 @@ export async function onRequest(context) {
       console.error('❌ DFlow API Error:');
       console.error('Status:', response.status);
       console.error('URL:', url);
-      console.error('Method:', method.toUpperCase());
-      console.error('Endpoint:', endpoint);
       console.error('Response Text:', errorText);
-      if (errorJson) {
-        console.error('Response JSON:', errorJson);
-      }
       
       return new Response(JSON.stringify({ 
         error: `DFlow API error: ${response.status}`,
         status: response.status,
         details: errorText,
-        parsedError: errorJson,
         endpoint: endpoint,
-        hint: 'Check Cloudflare logs for more details'
+        hint: 'Check the URL path format'
       }), {
         status: response.status,
         headers: {

@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { callRpc } from '../utils/rpc';
+import { dflowAPI } from '@/lib/services/dflow'; // ← Import the service
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
@@ -101,72 +102,52 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
-  // DFlow API call - handles both quote and swap endpoints
-  const callDflowApi = async (endpoint, method, data) => {
-    console.log(`\n📤 DFlow API Call: ${method} /${endpoint}`);
-    console.log('Request params:', data);
+  // ============================================================
+  // USING THE SAME MECHANISM AS MARKETS.TSX
+  // ============================================================
 
-    const response = await fetch('/api/dflow', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        endpoint: endpoint,
-        method: method,
-        data: data
-      })
-    });
+  const getDflowQuote = async (amountInLamports) => {
+    console.log('📊 Fetching quote from DFlow...');
+    console.log('  From (SOL):', SOL_MINT);
+    console.log('  To (TREAT):', TREAT_MINT_ADDRESS);
+    console.log('  Amount:', amountInLamports);
 
-    console.log(`Response status: ${response.status}`);
+    // Use the same dflowAPI service as Markets.tsx
+    const quote = await dflowAPI.getQuote(
+      SOL_MINT,
+      TREAT_MINT_ADDRESS,
+      amountInLamports,
+      50 // slippageBps
+    );
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('DFlow API Error:', errorData);
-      throw new Error(errorData.error || `DFlow API error: ${response.status}`);
-    }
-
-    const result = await response.json();
-    console.log(`✅ DFlow ${endpoint} response:`, result);
-    return result;
-  };
-
-  const getDflowQuote = async (amount) => {
-    console.log('Fetching quote from DFlow via proxy...');
-    console.log('From (SOL):', SOL_MINT);
-    console.log('To (TREAT):', TREAT_MINT_ADDRESS);
-    console.log('Amount (lamports):', amount);
-
-    const quoteParams = {
-      inputMint: SOL_MINT,
-      outputMint: TREAT_MINT_ADDRESS,
-      amount: amount.toString(),
-      slippageBps: '50',
-    };
-
-    console.log('Quote request params:', quoteParams);
-
-    const data = await callDflowApi('quote', 'GET', quoteParams);
-
-    console.log('✅ Quote received:', data);
-
-    if (!data || !data.routePlan) {
+    if (!quote || !quote.outAmount) {
       throw new Error('No quote received from DFlow');
     }
 
-    return data;
+    console.log('✅ Quote received:', quote);
+    return quote;
   };
 
   const getDflowSwap = async (quoteData) => {
-    const data = await callDflowApi('swap', 'POST', {
-      userPublicKey: walletAddress,
+    console.log('📝 Getting swap transaction from DFlow...');
+
+    // Use the same dflowAPI service as Markets.tsx
+    const swapData = await dflowAPI.getSwapTransaction({
       quoteResponse: quoteData,
+      userPublicKey: walletAddress,
+      wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 150000,
+      slippageBps: 50,
+      dynamicSlippage: true,
     });
 
+    if (!swapData || !swapData.swapTransaction) {
+      throw new Error('No swap transaction received from DFlow');
+    }
+
     console.log('✅ Swap transaction received');
-    return data;
+    return swapData;
   };
 
   // Helper function to convert base64 to Uint8Array
@@ -201,15 +182,15 @@ export default function Buy({
     setIsSwapping(true);
     try {
       console.log('🔄 Starting swap with DFlow...');
-      console.log('Amount:', amount);
-      console.log('Wallet:', walletAddress);
+      console.log('  Amount:', amount);
+      console.log('  Wallet:', walletAddress);
 
       const amountInLamports = Math.floor(amount * 1e9);
       
+      // 1. Get quote using the same mechanism as Markets.tsx
       let quoteData;
       try {
         quoteData = await getDflowQuote(amountInLamports);
-        console.log('📊 Quote received:', quoteData);
         
         if (quoteData && quoteData.outAmount) {
           const outAmount = parseFloat(quoteData.outAmount) / 1e6;
@@ -220,10 +201,10 @@ export default function Buy({
         throw new Error(`Could not get swap quote: ${quoteError.message}`);
       }
 
+      // 2. Get swap transaction using the same mechanism as Markets.tsx
       let swapData;
       try {
         swapData = await getDflowSwap(quoteData);
-        console.log('📝 Swap transaction received');
       } catch (swapError) {
         console.error('Swap transaction error:', swapError);
         throw new Error(`Could not create swap transaction: ${swapError.message}`);
@@ -233,6 +214,7 @@ export default function Buy({
         throw new Error('No swap transaction received from DFlow');
       }
 
+      // 3. Deserialize the transaction
       let transaction;
       try {
         const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
@@ -250,7 +232,7 @@ export default function Buy({
         throw new Error(`Failed to deserialize transaction: ${txError.message}`);
       }
 
-      // Get Fixorium wallet connector from window
+      // 4. Sign with Fixorium Wallet
       const fixoriumConnector = window.fixoriumWalletConnector;
       if (!fixoriumConnector) {
         throw new Error('Fixorium wallet connector not found. Please reconnect your wallet.');
@@ -262,6 +244,7 @@ export default function Buy({
 
       console.log('✅ Transaction sent! Signature:', signature);
 
+      // 5. Wait for confirmation
       let confirmed = false;
       let attempts = 0;
       const maxAttempts = 30;

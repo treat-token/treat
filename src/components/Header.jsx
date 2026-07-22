@@ -115,33 +115,12 @@ export default function Header({
   walletAddress, 
   onConnect, 
   onDisconnect,
-  isLoading,
-  activeWalletType
+  isLoading
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const isConnectingRef = useRef(false);
-  const hasRestoredRef = useRef(false);
-
-  // NO AUTO-CONNECT on mount - just check if already connected from session
-  useEffect(() => {
-    // Only check for existing connection, don't auto-connect
-    // This just sets the initial state if the user already had a session
-    const stored = localStorage.getItem('fixorium_connection');
-    if (stored && !walletConnected && !hasRestoredRef.current) {
-      try {
-        const data = JSON.parse(stored);
-        if (data.publicKey) {
-          // Just restore the state without triggering a new connection
-          hasRestoredRef.current = true;
-          // The parent component already has the connection state from localStorage
-          // No need to call onConnect again
-          console.log('✅ Fixorium wallet session found');
-        }
-      } catch (e) {}
-    }
-  }, []); // Empty dependency - runs only once
 
   const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
 
@@ -151,42 +130,11 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
-    // If already connected, go to buy section
     if (walletConnected) {
       handleNavigate('buy');
       return;
     }
-    // Otherwise show wallet selection modal
     setShowWalletModal(true);
-  };
-
-  const handleConnectPhantom = async () => {
-    if (isConnectingRef.current) return;
-    isConnectingRef.current = true;
-    setIsConnecting(true);
-    
-    try {
-      if (window.phantom?.solana) {
-        const result = await window.phantom.solana.connect();
-        const publicKey = result.publicKey.toString();
-        if (onConnect) {
-          onConnect('phantom');
-        }
-        setShowWalletModal(false);
-        handleNavigate('buy');
-      } else {
-        window.open('https://phantom.app/', '_blank');
-        alert('Please install Phantom wallet extension first');
-      }
-    } catch (error) {
-      console.error('Phantom connection error:', error);
-      alert('Failed to connect Phantom wallet');
-    } finally {
-      setIsConnecting(false);
-      setTimeout(() => {
-        isConnectingRef.current = false;
-      }, 500);
-    }
   };
 
   const handleConnectFixorium = async () => {
@@ -216,21 +164,9 @@ export default function Header({
     if (onDisconnect) {
       onDisconnect();
     }
+    // Show wallet modal after disconnect
+    setShowWalletModal(true);
   };
-
-  const getWalletDisplay = () => {
-    if (walletConnected && walletAddress) {
-      const isFixorium = activeWalletType === 'fixorium';
-      return {
-        name: isFixorium ? 'Fixorium' : 'Phantom',
-        icon: isFixorium ? '🔷' : '🟣',
-        address: walletAddress
-      };
-    }
-    return null;
-  };
-
-  const walletDisplay = getWalletDisplay();
 
   return (
     <>
@@ -249,13 +185,13 @@ export default function Header({
           </a>
 
           <div className="nav-right">
-            {walletDisplay ? (
+            {walletConnected && walletAddress ? (
               <div className="header-wallet-status">
                 <span className="status-dot connected"></span>
-                <span className="wallet-icon">{walletDisplay.icon}</span>
-                <span className="wallet-name">{walletDisplay.name}</span>
+                <span className="wallet-icon">🔷</span>
+                <span className="wallet-name">Fixorium</span>
                 <span className="wallet-addr">
-                  {`${walletDisplay.address.slice(0, 6)}...${walletDisplay.address.slice(-6)}`}
+                  {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`}
                 </span>
                 <button className="disconnect-btn" onClick={handleDisconnect}>
                   Disconnect
@@ -316,7 +252,7 @@ export default function Header({
         </div>
       </header>
 
-      {/* Wallet Selection Modal */}
+      {/* Wallet Selection Modal - Only Fixorium */}
       {showWalletModal && (
         <div className="wallet-modal-overlay" onClick={() => setShowWalletModal(false)}>
           <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
@@ -324,29 +260,9 @@ export default function Header({
               <h2>Connect Wallet</h2>
               <button className="wallet-modal-close-btn" onClick={() => setShowWalletModal(false)}>✕</button>
             </div>
-            <p>Choose your wallet to connect</p>
+            <p>Connect your Fixorium Wallet</p>
             
             <div className="wallet-options">
-              {/* Phantom Wallet */}
-              <button 
-                className="wallet-option phantom"
-                onClick={handleConnectPhantom}
-                disabled={isConnecting}
-              >
-                <div className="wallet-option-icon">
-                  <img 
-                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 397.7 311.7'%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill:%2314f195%7D%3C/style%3E%3C/defs%3E%3Cpath class='a' d='M64.6,237.9c2.4-2.4,5.7-3.8,9.2-3.8h317.4c5.8,0,8.7,7,4.6,11.1L372.6,271c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M64.6,3.8C67,1.4,70.3,0,73.8,0H391.2c5.8,0,8.7,7,4.6,11.1L372.6,40.6c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M333.1,120.9c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8,0-8.7,7-4.6,11.1l25.2,25.2c2.4,2.4,5.7,3.8,9.2,3.8H357.7c5.8,0,8.7-7,4.6-11.1Z'/%3E%3C/svg%3E"
-                    alt="Phantom"
-                  />
-                </div>
-                <div className="wallet-option-info">
-                  <span className="wallet-option-name">Phantom</span>
-                  <span className="wallet-option-desc">Solana Wallet</span>
-                </div>
-                <span className="wallet-option-arrow">→</span>
-              </button>
-
-              {/* Fixorium Wallet */}
               <button 
                 className="wallet-option fixorium"
                 onClick={handleConnectFixorium}
@@ -471,25 +387,16 @@ export default function Header({
           cursor: not-allowed;
         }
 
-        .wallet-option-icon {
+        .fixorium-icon {
           width: 44px;
           height: 44px;
           border-radius: 12px;
-          background: #1f1a18;
+          background: linear-gradient(135deg, #00D4FF, #0099cc);
           display: flex;
           align-items: center;
           justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .wallet-option-icon img {
-          width: 28px;
-          height: 28px;
-        }
-
-        .fixorium-icon {
-          background: linear-gradient(135deg, #00D4FF, #0099cc);
           font-size: 22px;
+          flex-shrink: 0;
         }
 
         .wallet-option-info {

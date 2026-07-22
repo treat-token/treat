@@ -1,3 +1,4 @@
+// src/components/Header.jsx
 import React, { useState, useEffect } from 'react';
 
 const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
@@ -105,7 +106,6 @@ class FixoriumWalletConnector {
   }
 }
 
-// Create singleton instance
 const fixoriumWallet = new FixoriumWalletConnector();
 
 export default function Header({ 
@@ -115,34 +115,24 @@ export default function Header({
   walletAddress, 
   onConnect, 
   onDisconnect,
-  onFixoriumConnect,
-  onFixoriumDisconnect
+  isLoading,
+  activeWalletType
 }) {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [selectedWallet, setSelectedWallet] = useState(null);
 
-  // Check for stored Fixorium connection on mount
   useEffect(() => {
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
         const data = JSON.parse(stored);
-        if (data.publicKey) {
-          fixoriumWallet.publicKey = data.publicKey;
-          fixoriumWallet.isConnected = true;
-          if (onFixoriumConnect) {
-            onFixoriumConnect(data.publicKey);
+        if (data.publicKey && !walletConnected) {
+          if (onConnect) {
+            onConnect('fixorium');
           }
-          setSelectedWallet('fixorium');
         }
       } catch (e) {}
-    }
-
-    // Check if Phantom is connected
-    if (window.phantom?.solana?.isConnected) {
-      setSelectedWallet('phantom');
     }
   }, []);
 
@@ -155,7 +145,7 @@ export default function Header({
 
   const handleBuyTreat = () => {
     // If already connected, go to buy section
-    if (walletConnected || fixoriumWallet.isConnected) {
+    if (walletConnected) {
       handleNavigate('buy');
       return;
     }
@@ -169,11 +159,11 @@ export default function Header({
       if (window.phantom?.solana) {
         const result = await window.phantom.solana.connect();
         const publicKey = result.publicKey.toString();
-        setSelectedWallet('phantom');
         if (onConnect) {
-          onConnect(publicKey);
+          onConnect('phantom');
         }
         setShowWalletModal(false);
+        // Navigate to buy after connection
         handleNavigate('buy');
       } else {
         window.open('https://phantom.app/', '_blank');
@@ -191,11 +181,11 @@ export default function Header({
     setIsConnecting(true);
     try {
       const connection = await fixoriumWallet.connect();
-      setSelectedWallet('fixorium');
-      if (onFixoriumConnect) {
-        onFixoriumConnect(connection.publicKey);
+      if (onConnect) {
+        onConnect('fixorium');
       }
       setShowWalletModal(false);
+      // Navigate to buy after connection
       handleNavigate('buy');
     } catch (error) {
       console.error('Fixorium connection error:', error);
@@ -206,42 +196,19 @@ export default function Header({
   };
 
   const handleDisconnect = () => {
-    if (selectedWallet === 'fixorium') {
-      fixoriumWallet.disconnect();
-      if (onFixoriumDisconnect) {
-        onFixoriumDisconnect();
-      }
-    } else {
-      if (onDisconnect) {
-        onDisconnect();
-      }
-      if (window.phantom?.solana) {
-        try {
-          window.phantom.solana.disconnect();
-        } catch (e) {}
-      }
+    if (onDisconnect) {
+      onDisconnect();
     }
-    setSelectedWallet(null);
-    setShowWalletModal(true); // Show wallet selection after disconnect
-  };
-
-  const handleOpenWalletModal = () => {
-    setShowWalletModal(true);
+    // After disconnect, stay on current page
   };
 
   const getWalletDisplay = () => {
-    if (walletConnected && selectedWallet === 'phantom') {
+    if (walletConnected && walletAddress) {
+      const isFixorium = activeWalletType === 'fixorium';
       return {
-        name: 'Phantom',
-        icon: '🟣',
+        name: isFixorium ? 'Fixorium' : 'Phantom',
+        icon: isFixorium ? '🔷' : '🟣',
         address: walletAddress
-      };
-    }
-    if (fixoriumWallet.isConnected && selectedWallet === 'fixorium') {
-      return {
-        name: 'Fixorium',
-        icon: '🔷',
-        address: fixoriumWallet.publicKey
       };
     }
     return null;
@@ -266,7 +233,7 @@ export default function Header({
           </a>
 
           <div className="nav-right">
-            {walletDisplay ? (
+            {walletDisplay && (
               <div className="header-wallet-status">
                 <span className="status-dot connected"></span>
                 <span className="wallet-icon">{walletDisplay.icon}</span>
@@ -278,10 +245,6 @@ export default function Header({
                   Disconnect
                 </button>
               </div>
-            ) : (
-              <button className="connect-btn" onClick={handleOpenWalletModal}>
-                Connect Wallet
-              </button>
             )}
 
             <button className="cta" onClick={handleBuyTreat}>
@@ -402,7 +365,6 @@ export default function Header({
       )}
 
       <style>{`
-        /* Wallet Modal Styles */
         .wallet-modal-overlay {
           position: fixed;
           top: 0;
@@ -577,23 +539,8 @@ export default function Header({
           to { transform: rotate(360deg); }
         }
 
-        /* Header Styles */
         .connect-btn {
-          padding: 8px 20px;
-          background: linear-gradient(135deg, #9945FF, #7a2be0);
-          border: none;
-          border-radius: 40px;
-          color: #fff;
-          font-size: 0.8rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          margin-right: 12px;
-        }
-
-        .connect-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 15px rgba(153, 69, 255, 0.3);
+          display: none !important;
         }
 
         .header-wallet-status {
@@ -672,12 +619,6 @@ export default function Header({
 
           .wallet-addr {
             font-size: 10px;
-          }
-
-          .connect-btn {
-            padding: 6px 14px;
-            font-size: 0.7rem;
-            margin-right: 6px;
           }
         }
       `}</style>

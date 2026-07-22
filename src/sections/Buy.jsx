@@ -10,7 +10,7 @@ const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
 console.log('🔗 Buy.jsx using RPC proxy');
 
 // ============================================================
-// FIXORIUM WALLET CONNECTOR
+// FIXORIUM WALLET CONNECTOR (for transaction signing)
 // ============================================================
 
 class FixoriumWalletConnector {
@@ -90,8 +90,8 @@ class FixoriumWalletConnector {
 
       const params = new URLSearchParams();
       params.append('requestId', requestId);
-      params.append('message', 'Connect to Fixorium Swap');
-      params.append('appName', 'Fixorium Swap');
+      params.append('message', 'Connect to TREAT Swap');
+      params.append('appName', 'TREAT Swap');
       params.append('appUrl', window.location.origin);
       params.append('callbackUrl', window.location.origin + '/callback');
 
@@ -134,6 +134,7 @@ class FixoriumWalletConnector {
       const requestId = 'tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
       this.pendingRequests.set(requestId, { resolve, reject });
 
+      // Serialize transaction
       const serialized = transaction.serialize();
       const transactionBase64 = btoa(String.fromCharCode.apply(null, serialized));
 
@@ -141,7 +142,7 @@ class FixoriumWalletConnector {
       params.append('requestId', requestId);
       params.append('transaction', transactionBase64);
       params.append('message', 'Sign Swap Transaction');
-      params.append('appName', 'Fixorium Swap');
+      params.append('appName', 'TREAT Swap');
       params.append('appUrl', window.location.origin);
       params.append('callbackUrl', window.location.origin + '/callback');
 
@@ -207,7 +208,7 @@ export default function Buy({
   treatPrice, 
   showToast,
   isLoading,
-  onWalletChange // New prop for wallet change callback
+  activeWalletType
 }) {
   const [swapInput, setSwapInput] = useState('');
   const [swapOutput, setSwapOutput] = useState('0.0');
@@ -216,40 +217,10 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
-  const [activeWallet, setActiveWallet] = useState(null); // 'phantom' or 'fixorium'
+  const [fixoriumAddress, setFixoriumAddress] = useState(null);
 
+  // Check for Fixorium connection on mount
   useEffect(() => {
-    fetchSolPrice();
-    checkActiveWallet();
-    // Listen for storage changes
-    window.addEventListener('storage', handleStorageChange);
-    // Listen for custom wallet change events
-    window.addEventListener('walletChanged', handleWalletChangeEvent);
-    return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('walletChanged', handleWalletChangeEvent);
-    };
-  }, []);
-
-  const handleStorageChange = (e) => {
-    if (e.key === 'fixorium_connection') {
-      checkActiveWallet();
-    }
-  };
-
-  const handleWalletChangeEvent = (e) => {
-    const { walletType, address } = e.detail || {};
-    if (walletType === 'fixorium' && address) {
-      setActiveWallet('fixorium');
-      if (onWalletChange) onWalletChange('fixorium', address);
-    } else if (walletType === 'phantom' && address) {
-      setActiveWallet('phantom');
-      if (onWalletChange) onWalletChange('phantom', address);
-    }
-  };
-
-  const checkActiveWallet = () => {
-    // Check Fixorium first
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
@@ -257,23 +228,13 @@ export default function Buy({
         if (data.publicKey) {
           fixoriumWallet.publicKey = data.publicKey;
           fixoriumWallet.isConnected = true;
-          setActiveWallet('fixorium');
-          if (onWalletChange) onWalletChange('fixorium', data.publicKey);
-          return;
+          setFixoriumAddress(data.publicKey);
+          console.log('✅ Fixorium wallet detected in Buy');
         }
       } catch (e) {}
     }
-
-    // Check Phantom
-    if (walletConnected && walletAddress) {
-      setActiveWallet('phantom');
-      if (onWalletChange) onWalletChange('phantom', walletAddress);
-      return;
-    }
-
-    setActiveWallet(null);
-    if (onWalletChange) onWalletChange(null, null);
-  };
+    fetchSolPrice();
+  }, []);
 
   const fetchSolPrice = async () => {
     try {
@@ -337,15 +298,22 @@ export default function Buy({
       return;
     }
 
-    if (amount > solBalance) {
-      showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
+    const currentBalance = isFixoriumConnected ? solBalance : solBalance;
+    if (amount > currentBalance) {
+      showToast('❌ Insufficient Balance', `Not enough SOL in wallet (${currentBalance.toFixed(4)} SOL)`, 'error');
       return;
     }
+
+    // Determine which wallet is active
+    const walletType = isFixoriumConnected ? 'Fixorium' : (isPhantomConnected ? 'Phantom' : 'None');
+    const address = isFixoriumConnected ? fixoriumWallet.publicKey : walletAddress;
 
     setConfirmData({
       amount: amount,
       output: swapOutput,
-      rate: solPrice / treatPrice
+      rate: solPrice / treatPrice,
+      walletType: walletType,
+      address: address
     });
     setShowConfirmDialog(true);
   };
@@ -395,7 +363,10 @@ export default function Buy({
   };
 
   const getDflowSwap = async (quoteData) => {
-    const currentAddress = fixoriumWallet.publicKey || walletAddress;
+    // Use the active wallet address
+    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumWallet.publicKey;
+    const currentAddress = isFixoriumConnected ? fixoriumWallet.publicKey : walletAddress;
+    
     const data = await callDflowApi('swap', 'POST', {
       userPublicKey: currentAddress,
       quoteResponse: quoteData,
@@ -422,7 +393,7 @@ export default function Buy({
 
     const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumWallet.publicKey;
     const isPhantomConnected = walletConnected && walletAddress;
-    const currentAddress = fixoriumWallet.publicKey || walletAddress;
+    const currentAddress = isFixoriumConnected ? fixoriumWallet.publicKey : walletAddress;
 
     if (!currentAddress) {
       showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
@@ -435,8 +406,9 @@ export default function Buy({
       return;
     }
 
-    if (amount > solBalance) {
-      showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
+    const currentBalance = isFixoriumConnected ? solBalance : solBalance;
+    if (amount > currentBalance) {
+      showToast('❌ Insufficient Balance', `Not enough SOL in wallet (${currentBalance.toFixed(4)} SOL)`, 'error');
       return;
     }
 
@@ -610,7 +582,7 @@ export default function Buy({
   const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumWallet.publicKey;
   const isPhantomConnected = walletConnected && walletAddress;
   const isWalletConnected = isPhantomConnected || isFixoriumConnected;
-  const displayAddress = fixoriumWallet.publicKey || walletAddress || '';
+  const displayAddress = isFixoriumConnected ? fixoriumWallet.publicKey : walletAddress;
   const displayWalletType = isFixoriumConnected ? 'fixorium' : (isPhantomConnected ? 'phantom' : null);
   const displayWalletIcon = isFixoriumConnected ? '🔷' : '🟣';
   const displayWalletName = isFixoriumConnected ? 'Fixorium' : 'Phantom';
@@ -660,7 +632,7 @@ export default function Buy({
                 </strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
-                {displayAddress.slice(0, 6)}...{displayAddress.slice(-6)}
+                {displayAddress ? `${displayAddress.slice(0, 6)}...${displayAddress.slice(-6)}` : 'No address'}
               </span>
             </div>
 
@@ -798,6 +770,10 @@ export default function Buy({
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
                 <span style={{ color: '#6b5f58' }}>Rate</span>
                 <span style={{ color: '#a89890' }}>1 SOL ≈ {confirmData.rate.toFixed(2)} TREAT</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>Wallet</span>
+                <span style={{ color: '#14F195', fontWeight: 600 }}>{confirmData.walletType}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0' }}>
                 <span style={{ color: '#6b5f58' }}>Slippage</span>

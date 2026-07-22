@@ -101,6 +101,7 @@ class FixoriumWalletConnector {
     this.publicKey = null;
     this.isConnected = false;
     this.closePopup();
+    localStorage.removeItem('fixorium_connection');
   }
 }
 
@@ -152,12 +153,14 @@ export default function Header({
     setDropdownOpen(false);
   };
 
-  const handleBuyTreat = async () => {
-    if (!walletConnected && !fixoriumWallet.isConnected) {
-      setShowWalletModal(true);
+  const handleBuyTreat = () => {
+    // If already connected, go to buy section
+    if (walletConnected || fixoriumWallet.isConnected) {
+      handleNavigate('buy');
       return;
     }
-    handleNavigate('buy');
+    // Otherwise show wallet selection modal
+    setShowWalletModal(true);
   };
 
   const handleConnectPhantom = async () => {
@@ -171,6 +174,7 @@ export default function Header({
           onConnect(publicKey);
         }
         setShowWalletModal(false);
+        handleNavigate('buy');
       } else {
         window.open('https://phantom.app/', '_blank');
         alert('Please install Phantom wallet extension first');
@@ -192,6 +196,7 @@ export default function Header({
         onFixoriumConnect(connection.publicKey);
       }
       setShowWalletModal(false);
+      handleNavigate('buy');
     } catch (error) {
       console.error('Fixorium connection error:', error);
       alert('Failed to connect Fixorium Wallet');
@@ -210,8 +215,18 @@ export default function Header({
       if (onDisconnect) {
         onDisconnect();
       }
+      if (window.phantom?.solana) {
+        try {
+          window.phantom.solana.disconnect();
+        } catch (e) {}
+      }
     }
     setSelectedWallet(null);
+    setShowWalletModal(true); // Show wallet selection after disconnect
+  };
+
+  const handleOpenWalletModal = () => {
+    setShowWalletModal(true);
   };
 
   const getWalletDisplay = () => {
@@ -251,9 +266,9 @@ export default function Header({
           </a>
 
           <div className="nav-right">
-            {walletDisplay && (
+            {walletDisplay ? (
               <div className="header-wallet-status">
-                <span className={`status-dot connected`}></span>
+                <span className="status-dot connected"></span>
                 <span className="wallet-icon">{walletDisplay.icon}</span>
                 <span className="wallet-name">{walletDisplay.name}</span>
                 <span className="wallet-addr">
@@ -263,6 +278,10 @@ export default function Header({
                   Disconnect
                 </button>
               </div>
+            ) : (
+              <button className="connect-btn" onClick={handleOpenWalletModal}>
+                Connect Wallet
+              </button>
             )}
 
             <button className="cta" onClick={handleBuyTreat}>
@@ -322,7 +341,10 @@ export default function Header({
       {showWalletModal && (
         <div className="wallet-modal-overlay" onClick={() => setShowWalletModal(false)}>
           <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
-            <h2>Connect Wallet</h2>
+            <div className="wallet-modal-header">
+              <h2>Connect Wallet</h2>
+              <button className="wallet-modal-close-btn" onClick={() => setShowWalletModal(false)}>✕</button>
+            </div>
             <p>Choose your wallet to connect</p>
             
             <div className="wallet-options">
@@ -370,7 +392,7 @@ export default function Header({
             )}
 
             <button 
-              className="wallet-modal-close"
+              className="wallet-modal-cancel"
               onClick={() => setShowWalletModal(false)}
             >
               Cancel
@@ -398,24 +420,45 @@ export default function Header({
         .wallet-modal {
           background: #1a1614;
           border-radius: 24px;
-          padding: 2.5rem;
+          padding: 2rem;
           max-width: 420px;
           width: 90%;
           border: 1px solid #2a2220;
           box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9);
         }
 
-        .wallet-modal h2 {
+        .wallet-modal-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 0.5rem;
+        }
+
+        .wallet-modal-header h2 {
           color: #f0ece8;
           font-size: 1.5rem;
-          margin-bottom: 0.5rem;
-          text-align: center;
+        }
+
+        .wallet-modal-close-btn {
+          background: none;
+          border: none;
+          color: #6b5f58;
+          font-size: 1.5rem;
+          cursor: pointer;
+          padding: 4px 8px;
+          border-radius: 8px;
+          transition: all 0.3s ease;
+        }
+
+        .wallet-modal-close-btn:hover {
+          color: #f0ece8;
+          background: #1f1a18;
         }
 
         .wallet-modal p {
           color: #6b5f58;
           text-align: center;
-          margin-bottom: 2rem;
+          margin-bottom: 1.5rem;
           font-size: 0.9rem;
         }
 
@@ -494,7 +537,7 @@ export default function Header({
           font-size: 1.2rem;
         }
 
-        .wallet-modal-close {
+        .wallet-modal-cancel {
           width: 100%;
           padding: 0.8rem;
           background: #1f1a18;
@@ -507,7 +550,7 @@ export default function Header({
           transition: all 0.3s ease;
         }
 
-        .wallet-modal-close:hover {
+        .wallet-modal-cancel:hover {
           background: #2a2220;
         }
 
@@ -534,7 +577,25 @@ export default function Header({
           to { transform: rotate(360deg); }
         }
 
-        /* Header Wallet Status */
+        /* Header Styles */
+        .connect-btn {
+          padding: 8px 20px;
+          background: linear-gradient(135deg, #9945FF, #7a2be0);
+          border: none;
+          border-radius: 40px;
+          color: #fff;
+          font-size: 0.8rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          margin-right: 12px;
+        }
+
+        .connect-btn:hover {
+          transform: translateY(-2px);
+          box-shadow: 0 4px 15px rgba(153, 69, 255, 0.3);
+        }
+
         .header-wallet-status {
           display: flex;
           align-items: center;
@@ -611,6 +672,12 @@ export default function Header({
 
           .wallet-addr {
             font-size: 10px;
+          }
+
+          .connect-btn {
+            padding: 6px 14px;
+            font-size: 0.7rem;
+            margin-right: 6px;
           }
         }
       `}</style>

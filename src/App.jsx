@@ -305,7 +305,6 @@ function AppContent() {
           fixoriumWallet.isConnected = true;
           setActiveWalletType('fixorium');
           console.log('✅ Fixorium wallet restored from localStorage');
-          // Fetch balances for Fixorium wallet
           setTimeout(() => {
             fetchBalances(data.publicKey);
           }, 500);
@@ -313,8 +312,8 @@ function AppContent() {
       } catch (e) {}
     }
 
-    // Check Phantom connection
-    checkPhantomConnection();
+    // DO NOT auto-check Phantom connection on mount
+    // Phantom should ONLY connect when user explicitly clicks it
 
     // Listen for storage changes (Fixorium)
     const handleStorageChange = (e) => {
@@ -330,7 +329,6 @@ function AppContent() {
             }
           } catch (e) {}
         } else {
-          // Fixorium disconnected
           fixoriumWallet.isConnected = false;
           fixoriumWallet.publicKey = null;
           if (activeWalletType === 'fixorium') {
@@ -339,7 +337,6 @@ function AppContent() {
               setSolBalance(0);
               setTreatBalance(0);
             } else {
-              // Switch to Phantom
               setActiveWalletType('phantom');
               fetchBalances(phantomAddress);
             }
@@ -350,13 +347,8 @@ function AppContent() {
 
     window.addEventListener('storage', handleStorageChange);
 
-    // Phantom wallet events
+    // Phantom wallet events - only listen for user-initiated disconnects
     if (window.phantom?.solana) {
-      const handleConnect = () => {
-        console.log('🟣 Phantom connected');
-        checkPhantomConnection();
-      };
-      
       const handleDisconnect = () => {
         console.log('🟣 Phantom disconnected');
         if (activeWalletType === 'phantom') {
@@ -367,18 +359,15 @@ function AppContent() {
             setSolBalance(0);
             setTreatBalance(0);
           } else {
-            // Switch to Fixorium
             setActiveWalletType('fixorium');
             fetchBalances(fixoriumWallet.publicKey);
           }
         }
       };
 
-      window.phantom.solana.on('connect', handleConnect);
       window.phantom.solana.on('disconnect', handleDisconnect);
 
       return () => {
-        window.phantom.solana.off('connect', handleConnect);
         window.phantom.solana.off('disconnect', handleDisconnect);
         window.removeEventListener('storage', handleStorageChange);
       };
@@ -387,33 +376,7 @@ function AppContent() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Check Phantom connection
-  const checkPhantomConnection = async () => {
-    // Skip if Fixorium is already connected
-    if (fixoriumWallet.isConnected) {
-      return;
-    }
-
-    await new Promise(resolve => setTimeout(resolve, 500));
-
-    if (window.phantom?.solana?.isPhantom) {
-      try {
-        const phantom = window.phantom.solana;
-        if (phantom.isConnected && phantom.publicKey) {
-          const pubKey = phantom.publicKey.toString();
-          setPhantomAddress(pubKey);
-          setPhantomConnected(true);
-          setActiveWalletType('phantom');
-          await fetchBalances(pubKey);
-          console.log('🟣 Phantom wallet detected');
-        }
-      } catch (error) {
-        console.error('Error checking Phantom:', error);
-      }
-    }
-  };
-
-  // Connect wallet
+  // Connect wallet - MANUAL ONLY
   const connectWallet = async (walletType = 'phantom') => {
     if (walletType === 'fixorium') {
       try {
@@ -443,7 +406,7 @@ function AppContent() {
       return;
     }
 
-    // Phantom wallet
+    // Phantom wallet - MANUAL CONNECT ONLY
     if (!window.phantom?.solana) {
       showToast('❌ Wallet Not Found', 'Please install Phantom wallet', 'error');
       return;
@@ -479,11 +442,6 @@ function AppContent() {
       setSolBalance(0);
       setTreatBalance(0);
       showToast('✅ Disconnected', 'Fixorium wallet disconnected', 'success');
-      // Check if Phantom is connected and switch to it
-      if (phantomConnected && phantomAddress) {
-        setActiveWalletType('phantom');
-        fetchBalances(phantomAddress);
-      }
       return;
     }
 
@@ -498,11 +456,6 @@ function AppContent() {
         setSolBalance(0);
         setTreatBalance(0);
         showToast('✅ Disconnected', 'Phantom wallet disconnected', 'success');
-        // Check if Fixorium is connected and switch to it
-        if (fixoriumWallet.isConnected && fixoriumWallet.publicKey) {
-          setActiveWalletType('fixorium');
-          fetchBalances(fixoriumWallet.publicKey);
-        }
       } catch (error) {
         showToast('❌ Disconnect Failed', error.message || 'Failed to disconnect', 'error');
       }

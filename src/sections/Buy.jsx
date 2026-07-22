@@ -101,8 +101,11 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
-  // DFlow API call via Cloudflare proxy
+  // DFlow API call - handles both quote and swap endpoints
   const callDflowApi = async (endpoint, method, data) => {
+    console.log(`\n📤 DFlow API Call: ${method} /${endpoint}`);
+    console.log('Request params:', data);
+
     const response = await fetch('/api/dflow', {
       method: 'POST',
       headers: {
@@ -115,29 +118,38 @@ export default function Buy({
       })
     });
 
+    console.log(`Response status: ${response.status}`);
+
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || `API error: ${response.status}`);
+      console.error('DFlow API Error:', errorData);
+      throw new Error(errorData.error || `DFlow API error: ${response.status}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+    console.log(`✅ DFlow ${endpoint} response:`, result);
+    return result;
   };
 
   const getDflowQuote = async (amount) => {
     console.log('Fetching quote from DFlow via proxy...');
-    console.log('From:', SOL_MINT);
-    console.log('To:', TREAT_MINT_ADDRESS);
-    console.log('Amount:', amount);
-    
-    const data = await callDflowApi('quote', 'GET', {
+    console.log('From (SOL):', SOL_MINT);
+    console.log('To (TREAT):', TREAT_MINT_ADDRESS);
+    console.log('Amount (lamports):', amount);
+
+    const quoteParams = {
       inputMint: SOL_MINT,
       outputMint: TREAT_MINT_ADDRESS,
       amount: amount.toString(),
       slippageBps: '50',
-    });
+    };
+
+    console.log('Quote request params:', quoteParams);
+
+    const data = await callDflowApi('quote', 'GET', quoteParams);
 
     console.log('✅ Quote received:', data);
-    
+
     if (!data || !data.routePlan) {
       throw new Error('No quote received from DFlow');
     }

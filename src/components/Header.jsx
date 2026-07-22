@@ -32,6 +32,12 @@ export default function Header({
 
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
+    if (walletConnected) {
+      setShowWalletModal(false);
+      handleNavigate('buy');
+      return;
+    }
+
     isConnectingRef.current = true;
     setIsConnecting(true);
 

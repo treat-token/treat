@@ -1,6 +1,6 @@
 // src/App.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { ConnectionProvider } from '@solana/wallet-adapter-base';
+import { ConnectionProvider } from '@solana/wallet-adapter-react';
 import { WalletProvider } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import Header from './components/Header';

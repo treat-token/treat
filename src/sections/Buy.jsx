@@ -192,10 +192,8 @@ export default function Buy({
       console.log('Amount:', amount);
       console.log('Wallet:', walletAddress);
 
-      // Convert SOL to lamports (1 SOL = 1e9 lamports)
       const amountInLamports = Math.floor(amount * 1e9);
       
-      // 1. Get quote from DFlow
       let quoteData;
       try {
         quoteData = await getDflowQuote(amountInLamports);
@@ -210,7 +208,6 @@ export default function Buy({
         throw new Error(`Could not get swap quote: ${quoteError.message}`);
       }
 
-      // 2. Get swap transaction from DFlow
       let swapData;
       try {
         swapData = await getDflowSwap(quoteData);
@@ -224,7 +221,6 @@ export default function Buy({
         throw new Error('No swap transaction received from DFlow');
       }
 
-      // 3. Deserialize the transaction
       let transaction;
       try {
         const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
@@ -242,10 +238,10 @@ export default function Buy({
         throw new Error(`Failed to deserialize transaction: ${txError.message}`);
       }
 
-      // 4. Get Fixorium wallet connector from window
+      // Get Fixorium wallet connector from window
       const fixoriumConnector = window.fixoriumWalletConnector;
       if (!fixoriumConnector) {
-        throw new Error('Fixorium wallet connector not found');
+        throw new Error('Fixorium wallet connector not found. Please reconnect your wallet.');
       }
 
       console.log('📝 Requesting Fixorium Wallet to sign and send transaction...');
@@ -254,7 +250,6 @@ export default function Buy({
 
       console.log('✅ Transaction sent! Signature:', signature);
 
-      // 5. Wait for confirmation using RPC proxy
       let confirmed = false;
       let attempts = 0;
       const maxAttempts = 30;
@@ -299,7 +294,6 @@ export default function Buy({
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
 
-      // Refresh balances
       if (window.refreshBalances) {
         setTimeout(async () => {
           await window.refreshBalances();
@@ -323,6 +317,8 @@ export default function Buy({
         showToast('❌ API Key Error', 'DFlow API key is missing or invalid. Please check environment variables.', 'error');
       } else if (errorMessage.includes('insufficient balance')) {
         showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
+      } else if (errorMessage.includes('connector not found')) {
+        showToast('❌ Wallet Error', 'Please reconnect your Fixorium wallet and try again.', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }
@@ -345,7 +341,7 @@ export default function Buy({
 
         {!walletConnected ? (
           <div style={{ 
-            text-align: 'center', 
+            textAlign: 'center', 
             padding: '3rem 1rem',
             background: '#121010',
             borderRadius: '20px',

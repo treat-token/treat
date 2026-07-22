@@ -1,5 +1,5 @@
 // src/App.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ConnectionProvider } from '@solana/wallet-adapter-base';
 import { WalletProvider } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
@@ -192,6 +192,9 @@ class FixoriumWalletConnector {
 // Create singleton instance
 const fixoriumWallet = new FixoriumWalletConnector();
 
+// Make it globally available
+window.fixoriumWalletConnector = fixoriumWallet;
+
 // ============================================================
 // APP CONTENT
 // ============================================================
@@ -205,6 +208,7 @@ function AppContent() {
   const [treatPrice, setTreatPrice] = useState(0);
   const [toast, setToast] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+  const isFirstLoadRef = useRef(true);
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type });
@@ -223,7 +227,6 @@ function AppContent() {
     try {
       const pubKey = new PublicKey(pubKeyStr);
       
-      // Fetch SOL balance
       try {
         const result = await callRpc('getBalance', [pubKey.toBase58()]);
         const balance = result.value || 0;
@@ -235,7 +238,6 @@ function AppContent() {
         setSolBalance(0);
       }
 
-      // Fetch TREAT token balance
       try {
         const result = await callRpc('getTokenAccountsByOwner', [
           pubKey.toBase58(),
@@ -270,13 +272,17 @@ function AppContent() {
     window.refreshBalances = refreshBalances;
   }, [walletAddress]);
 
-  // Check for stored Fixorium connection
+  // Check for stored Fixorium connection - ONLY ON FIRST LOAD
   useEffect(() => {
+    if (!isFirstLoadRef.current) return;
+    isFirstLoadRef.current = false;
+
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
         const data = JSON.parse(stored);
         if (data.publicKey) {
+          // Restore connection state without triggering new connection
           fixoriumWallet.publicKey = data.publicKey;
           fixoriumWallet.isConnected = true;
           setWalletAddress(data.publicKey);
@@ -311,13 +317,14 @@ function AppContent() {
   };
 
   const disconnectWallet = () => {
+    // Disconnect wallet
     fixoriumWallet.disconnect();
     setWalletAddress('');
     setWalletConnected(false);
     setSolBalance(0);
     setTreatBalance(0);
     showToast('✅ Disconnected', 'Fixorium wallet disconnected', 'success');
-    // Show connect modal after disconnect
+    // DO NOT show wallet modal - user can click BUY TREAT to reconnect
   };
 
   const fetchPriceData = async () => {

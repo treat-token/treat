@@ -23,7 +23,11 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
-    handleNavigate('buy');
+    if (!walletConnected) {
+      setShowWalletModal(true);
+    } else {
+      handleNavigate('buy');
+    }
   };
 
   const handleConnectFixorium = async () => {

@@ -101,8 +101,11 @@ export default function Buy({
     setShowConfirmDialog(true);
   };
 
-  // DFlow API call via Cloudflare proxy
+  // DFlow API call - handles both quote and swap endpoints
   const callDflowApi = async (endpoint, method, data) => {
+    console.log(`\n📤 DFlow API Call: ${method} /${endpoint}`);
+    console.log('Request params:', data);
+
     const response = await fetch('/api/dflow', {
       method: 'POST',
       headers: {
@@ -115,12 +118,17 @@ export default function Buy({
       })
     });
 
+    console.log(`Response status: ${response.status}`);
+
     if (!response.ok) {
       const errorData = await response.json();
-      throw new Error(errorData.error || `API error: ${response.status}`);
+      console.error('DFlow API Error:', errorData);
+      throw new Error(errorData.error || `DFlow API error: ${response.status}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+    console.log(`✅ DFlow ${endpoint} response:`, result);
+    return result;
   };
 
   const getDflowQuote = async (amount) => {

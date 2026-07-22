@@ -20,12 +20,14 @@ export async function onRequest(context) {
   }
 
   try {
-    // Check if API key is available
-    if (!DFLOW_API_KEY) {
-      console.error('DFLOW_API_KEY is missing in environment variables');
+    // Check if API key is available and not a placeholder
+    if (!DFLOW_API_KEY || DFLOW_API_KEY.includes('REPLACE_ENV')) {
+      console.error('❌ DFLOW_API_KEY is not properly configured');
+      console.error('Current value:', DFLOW_API_KEY);
+      console.error('Please set DFLOW_API_KEY in Cloudflare environment variables');
       return new Response(JSON.stringify({ 
         error: 'API key not configured',
-        message: 'DFLOW_API_KEY is missing in Cloudflare environment variables'
+        message: 'DFLOW_API_KEY must be set in Cloudflare environment. Current value contains placeholder or is missing.'
       }), {
         status: 500,
         headers: {
@@ -79,7 +81,13 @@ export async function onRequest(context) {
       url += `?${params.toString()}`;
     }
 
-    console.log(`Calling DFlow ${method} ${url}`);
+    console.log(`\n📤 DFlow API Request:`);
+    console.log(`Method: ${method.toUpperCase()}`);
+    console.log(`URL: ${url}`);
+    console.log(`Endpoint: ${endpoint}`);
+    if (data) {
+      console.log(`Data:`, data);
+    }
 
     // Prepare fetch options
     const fetchOptions = {
@@ -94,12 +102,13 @@ export async function onRequest(context) {
     if (method.toUpperCase() === 'POST') {
       fetchOptions.headers['Content-Type'] = 'application/json';
       fetchOptions.body = JSON.stringify(data);
+      console.log(`Body:`, data);
     }
 
     // Forward the request to DFlow API
     const response = await fetch(url, fetchOptions);
 
-    console.log(`DFlow API response status: ${response.status}`);
+    console.log(`\n📥 DFlow Response Status: ${response.status}`);
 
     // Handle error responses
     if (!response.ok) {
@@ -115,19 +124,23 @@ export async function onRequest(context) {
         errorText = 'Unable to read error response';
       }
 
-      console.error('DFlow API error:');
+      console.error('❌ DFlow API Error:');
       console.error('Status:', response.status);
       console.error('URL:', url);
       console.error('Method:', method.toUpperCase());
-      console.error('Request data:', data);
-      console.error('Response text:', errorText);
-      console.error('Response JSON:', errorJson);
-
-      return new Response(JSON.stringify({
+      console.error('Endpoint:', endpoint);
+      console.error('Response Text:', errorText);
+      if (errorJson) {
+        console.error('Response JSON:', errorJson);
+      }
+      
+      return new Response(JSON.stringify({ 
         error: `DFlow API error: ${response.status}`,
         status: response.status,
         details: errorText,
-        parsedError: errorJson
+        parsedError: errorJson,
+        endpoint: endpoint,
+        hint: 'Check Cloudflare logs for more details'
       }), {
         status: response.status,
         headers: {
@@ -139,6 +152,8 @@ export async function onRequest(context) {
 
     // Return successful response
     const responseData = await response.json();
+    console.log(`✅ DFlow ${endpoint} successful`);
+    
     return new Response(JSON.stringify(responseData), {
       status: 200,
       headers: {
@@ -148,7 +163,7 @@ export async function onRequest(context) {
     });
 
   } catch (error) {
-    console.error('Cloudflare Function error:', error);
+    console.error('❌ Cloudflare Function error:', error);
     return new Response(JSON.stringify({ 
       error: 'Internal server error',
       message: error.message,

@@ -134,11 +134,7 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
-    if (walletConnected) {
-      handleNavigate('buy');
-      return;
-    }
-    setShowWalletModal(true);
+    handleNavigate('buy');
   };
 
   const handleConnectFixorium = async () => {

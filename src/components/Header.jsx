@@ -1,5 +1,5 @@
 // src/components/Header.jsx
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 
 const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
 
@@ -106,7 +106,11 @@ class FixoriumWalletConnector {
   }
 }
 
+// Create singleton instance
 const fixoriumWallet = new FixoriumWalletConnector();
+
+// Make it globally available for Buy component
+window.fixoriumWalletConnector = fixoriumWallet;
 
 export default function Header({ 
   activeSection, 
@@ -145,7 +149,7 @@ export default function Header({
     try {
       const connection = await fixoriumWallet.connect();
       if (onConnect) {
-        onConnect('fixorium');
+        onConnect(connection.publicKey);
       }
       setShowWalletModal(false);
       handleNavigate('buy');
@@ -161,11 +165,12 @@ export default function Header({
   };
 
   const handleDisconnect = () => {
+    // Only disconnect, DO NOT show wallet modal
     if (onDisconnect) {
       onDisconnect();
     }
-    // Show wallet modal after disconnect
-    setShowWalletModal(true);
+    // Close dropdown if open
+    setDropdownOpen(false);
   };
 
   return (

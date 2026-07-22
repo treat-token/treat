@@ -350,34 +350,9 @@ export default function Buy({
           }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
             <h3 style={{ color: '#f0ece8', marginBottom: '0.5rem' }}>Wallet Not Connected</h3>
-            <p style={{ color: '#a89890', fontSize: '0.9rem', marginBottom: '1.5rem' }}>
-              Please connect your Fixorium wallet to continue
+            <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
+              Please connect your Fixorium wallet using the header button
             </p>
-            <button
-              onClick={() => {
-                const connector = window.fixoriumWalletConnector;
-                if (connector) {
-                  connector.connect().then(() => {
-                    window.location.reload();
-                  }).catch(error => {
-                    showToast('❌ Connection Failed', error.message || 'Failed to connect wallet', 'error');
-                  });
-                }
-              }}
-              style={{
-                padding: '0.8rem 1.5rem',
-                background: 'linear-gradient(135deg, #00D4FF, #0099cc)',
-                border: 'none',
-                borderRadius: '40px',
-                color: '#000',
-                fontSize: '0.9rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
-              }}
-            >
-              Connect Fixorium Wallet
-            </button>
           </div>
         ) : (
           <>

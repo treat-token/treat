@@ -206,7 +206,8 @@ export default function Buy({
   treatBalance, 
   treatPrice, 
   showToast,
-  isLoading
+  isLoading,
+  onWalletChange // New prop for wallet change callback
 }) {
   const [swapInput, setSwapInput] = useState('');
   const [swapOutput, setSwapOutput] = useState('0.0');
@@ -215,25 +216,40 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
-  const [walletType, setWalletType] = useState(null);
-  const [isFixoriumConnecting, setIsFixoriumConnecting] = useState(false);
-  const [fixoriumAddress, setFixoriumAddress] = useState(null);
+  const [activeWallet, setActiveWallet] = useState(null); // 'phantom' or 'fixorium'
 
   useEffect(() => {
     fetchSolPrice();
-    checkFixoriumConnection();
-    // Listen for wallet changes
+    checkActiveWallet();
+    // Listen for storage changes
     window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
+    // Listen for custom wallet change events
+    window.addEventListener('walletChanged', handleWalletChangeEvent);
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('walletChanged', handleWalletChangeEvent);
+    };
   }, []);
 
   const handleStorageChange = (e) => {
     if (e.key === 'fixorium_connection') {
-      checkFixoriumConnection();
+      checkActiveWallet();
     }
   };
 
-  const checkFixoriumConnection = () => {
+  const handleWalletChangeEvent = (e) => {
+    const { walletType, address } = e.detail || {};
+    if (walletType === 'fixorium' && address) {
+      setActiveWallet('fixorium');
+      if (onWalletChange) onWalletChange('fixorium', address);
+    } else if (walletType === 'phantom' && address) {
+      setActiveWallet('phantom');
+      if (onWalletChange) onWalletChange('phantom', address);
+    }
+  };
+
+  const checkActiveWallet = () => {
+    // Check Fixorium first
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
@@ -241,20 +257,22 @@ export default function Buy({
         if (data.publicKey) {
           fixoriumWallet.publicKey = data.publicKey;
           fixoriumWallet.isConnected = true;
-          setFixoriumAddress(data.publicKey);
-          setWalletType('fixorium');
-          console.log('✅ Fixorium wallet detected in Buy.jsx');
-          return true;
+          setActiveWallet('fixorium');
+          if (onWalletChange) onWalletChange('fixorium', data.publicKey);
+          return;
         }
       } catch (e) {}
     }
-    // If Fixorium not connected, check Phantom
+
+    // Check Phantom
     if (walletConnected && walletAddress) {
-      setWalletType('phantom');
-      return true;
+      setActiveWallet('phantom');
+      if (onWalletChange) onWalletChange('phantom', walletAddress);
+      return;
     }
-    setWalletType(null);
-    return false;
+
+    setActiveWallet(null);
+    if (onWalletChange) onWalletChange(null, null);
   };
 
   const fetchSolPrice = async () => {
@@ -304,31 +322,8 @@ export default function Buy({
     }
   };
 
-  const handleConnectFixorium = async () => {
-    setIsFixoriumConnecting(true);
-    try {
-      const connection = await fixoriumWallet.connect();
-      setFixoriumAddress(connection.publicKey);
-      setWalletType('fixorium');
-      localStorage.setItem('fixorium_connection', JSON.stringify({
-        publicKey: connection.publicKey,
-        connectedAt: Date.now()
-      }));
-      showToast('✅ Fixorium Wallet Connected!', 'Wallet connected successfully', 'success');
-      // Notify parent
-      if (window.onFixoriumConnect) {
-        window.onFixoriumConnect(connection.publicKey);
-      }
-    } catch (error) {
-      console.error('Fixorium connection error:', error);
-      showToast('❌ Connection Failed', 'Could not connect to Fixorium Wallet', 'error');
-    } finally {
-      setIsFixoriumConnecting(false);
-    }
-  };
-
   const handleSwapClick = () => {
-    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumAddress;
+    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumWallet.publicKey;
     const isPhantomConnected = walletConnected && walletAddress;
 
     if (!isPhantomConnected && !isFixoriumConnected) {
@@ -400,7 +395,7 @@ export default function Buy({
   };
 
   const getDflowSwap = async (quoteData) => {
-    const currentAddress = fixoriumAddress || walletAddress;
+    const currentAddress = fixoriumWallet.publicKey || walletAddress;
     const data = await callDflowApi('swap', 'POST', {
       userPublicKey: currentAddress,
       quoteResponse: quoteData,
@@ -425,9 +420,9 @@ export default function Buy({
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
-    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumAddress;
+    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumWallet.publicKey;
     const isPhantomConnected = walletConnected && walletAddress;
-    const currentAddress = fixoriumAddress || walletAddress;
+    const currentAddress = fixoriumWallet.publicKey || walletAddress;
 
     if (!currentAddress) {
       showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
@@ -612,11 +607,13 @@ export default function Buy({
   };
 
   // Determine which wallet is connected
-  const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumAddress;
+  const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumWallet.publicKey;
   const isPhantomConnected = walletConnected && walletAddress;
   const isWalletConnected = isPhantomConnected || isFixoriumConnected;
-  const displayAddress = fixoriumAddress || walletAddress || '';
+  const displayAddress = fixoriumWallet.publicKey || walletAddress || '';
   const displayWalletType = isFixoriumConnected ? 'fixorium' : (isPhantomConnected ? 'phantom' : null);
+  const displayWalletIcon = isFixoriumConnected ? '🔷' : '🟣';
+  const displayWalletName = isFixoriumConnected ? 'Fixorium' : 'Phantom';
 
   return (
     <div className="card" style={{ padding: '1.5rem' }}>
@@ -659,7 +656,7 @@ export default function Buy({
             }}>
               <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
                 Connected via: <strong style={{ color: '#f0ece8' }}>
-                  {displayWalletType === 'fixorium' ? '🔷 Fixorium' : '🟣 Phantom'}
+                  {displayWalletIcon} {displayWalletName}
                 </strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>

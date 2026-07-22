@@ -1,117 +1,6 @@
 // src/components/Header.jsx
 import React, { useState, useRef } from 'react';
 
-const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
-
-// Fixorium Wallet Connector
-class FixoriumWalletConnector {
-  constructor() {
-    this.publicKey = null;
-    this.isConnected = false;
-    this.popupWindow = null;
-    this.onConnectCallback = null;
-    this.setupMessageListener();
-  }
-
-  setupMessageListener() {
-    window.addEventListener('message', (event) => {
-      if (event.origin !== FIXORIUM_WALLET_URL && event.origin !== window.location.origin) {
-        return;
-      }
-
-      try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        console.log('📩 Fixorium Wallet message:', data);
-
-        if (data.type === 'CONNECTION_APPROVED' || data.type === 'WALLET_CONNECTED') {
-          const publicKey = data.payload?.publicKey || data.publicKey;
-          if (publicKey) {
-            this.publicKey = publicKey;
-            this.isConnected = true;
-            this.closePopup();
-            if (this.onConnectCallback) {
-              this.onConnectCallback(publicKey);
-            }
-          }
-        }
-
-        if (data.type === 'CONNECTION_REJECTED') {
-          this.isConnected = false;
-          this.closePopup();
-        }
-      } catch (error) {
-        // Not JSON
-      }
-    });
-  }
-
-  closePopup() {
-    if (this.popupWindow && !this.popupWindow.closed) {
-      this.popupWindow.close();
-      this.popupWindow = null;
-    }
-  }
-
-  async connect() {
-    return new Promise((resolve, reject) => {
-      const requestId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-
-      this.onConnectCallback = (publicKey) => {
-        resolve({ publicKey });
-      };
-
-      const params = new URLSearchParams();
-      params.append('requestId', requestId);
-      params.append('message', 'Connect to TREAT App');
-      params.append('appName', 'TREAT App');
-      params.append('appUrl', window.location.origin);
-      params.append('callbackUrl', window.location.origin + '/callback');
-
-      const webUrl = `${FIXORIUM_WALLET_URL}/sign?${params.toString()}`;
-
-      console.log('🔗 Opening Fixorium Wallet...');
-
-      try {
-        this.popupWindow = window.open(
-          webUrl,
-          'FixoriumWallet',
-          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
-        );
-        if (this.popupWindow) {
-          this.popupWindow.focus();
-        } else {
-          window.location.href = webUrl;
-        }
-      } catch (e) {
-        reject(new Error('Failed to open Fixorium Wallet'));
-      }
-
-      setTimeout(() => {
-        if (this.popupWindow && !this.popupWindow.closed) {
-          this.popupWindow.close();
-          this.popupWindow = null;
-        }
-        if (!this.isConnected) {
-          reject(new Error('Connection timeout'));
-        }
-      }, 60000);
-    });
-  }
-
-  disconnect() {
-    this.publicKey = null;
-    this.isConnected = false;
-    this.closePopup();
-    localStorage.removeItem('fixorium_connection');
-  }
-}
-
-// Create singleton instance
-const fixoriumWallet = new FixoriumWalletConnector();
-
-// Make it globally available for Buy component
-window.fixoriumWalletConnector = fixoriumWallet;
-
 export default function Header({ 
   activeSection, 
   onNavigate, 
@@ -134,20 +23,20 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
-    if (walletConnected) {
-      handleNavigate('buy');
-      return;
-    }
-    setShowWalletModal(true);
+    handleNavigate('buy');
   };
 
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
     isConnectingRef.current = true;
     setIsConnecting(true);
-    
+
     try {
-      const connection = await fixoriumWallet.connect();
+      const fixoriumConnector = window.fixoriumWalletConnector;
+      if (!fixoriumConnector) {
+        throw new Error('Wallet connector not initialized');
+      }
+      const connection = await fixoriumConnector.connect();
       if (onConnect) {
         onConnect(connection.publicKey);
       }

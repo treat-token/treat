@@ -272,29 +272,6 @@ function AppContent() {
     window.refreshBalances = refreshBalances;
   }, [walletAddress]);
 
-  // Check for stored Fixorium connection - ONLY ON FIRST LOAD
-  useEffect(() => {
-    if (!isFirstLoadRef.current) return;
-    isFirstLoadRef.current = false;
-
-    const stored = localStorage.getItem('fixorium_connection');
-    if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        if (data.publicKey) {
-          // Restore connection state without triggering new connection
-          fixoriumWallet.publicKey = data.publicKey;
-          fixoriumWallet.isConnected = true;
-          setWalletAddress(data.publicKey);
-          setWalletConnected(true);
-          console.log('✅ Fixorium wallet restored');
-          setTimeout(() => {
-            fetchBalances(data.publicKey);
-          }, 500);
-        }
-      } catch (e) {}
-    }
-  }, []);
 
   const connectWallet = async () => {
     try {
@@ -302,10 +279,6 @@ function AppContent() {
       const connection = await fixoriumWallet.connect();
       setWalletAddress(connection.publicKey);
       setWalletConnected(true);
-      localStorage.setItem('fixorium_connection', JSON.stringify({
-        publicKey: connection.publicKey,
-        connectedAt: Date.now()
-      }));
       await fetchBalances(connection.publicKey);
       showToast('✅ Connected', 'Connected to Fixorium Wallet', 'success');
       setActiveSection('buy');
@@ -317,14 +290,13 @@ function AppContent() {
   };
 
   const disconnectWallet = () => {
-    // Disconnect wallet
     fixoriumWallet.disconnect();
     setWalletAddress('');
     setWalletConnected(false);
     setSolBalance(0);
     setTreatBalance(0);
+    setActiveSection('home');
     showToast('✅ Disconnected', 'Fixorium wallet disconnected', 'success');
-    // DO NOT show wallet modal - user can click BUY TREAT to reconnect
   };
 
   const fetchPriceData = async () => {

@@ -351,7 +351,7 @@ export default function Buy({
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
             <h3 style={{ color: '#f0ece8', marginBottom: '0.5rem' }}>Wallet Not Connected</h3>
             <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
-              Please connect your Fixorium wallet
+              Please connect your Fixorium wallet using the header button
             </p>
           </div>
         ) : (

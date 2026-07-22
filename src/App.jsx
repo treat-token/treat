@@ -2,7 +2,6 @@
 import React, { useState, useEffect } from 'react';
 import { WalletAdapterNetwork } from '@solana/wallet-adapter-base';
 import { ConnectionProvider, WalletProvider } from '@solana/wallet-adapter-react';
-import { PhantomWalletAdapter } from '@solana/wallet-adapter-wallets';
 import { PublicKey } from '@solana/web3.js';
 import Header from './components/Header';
 import Home from './sections/Home';
@@ -16,7 +15,6 @@ import Footer from './components/Footer';
 import Toast from './components/Toast';
 import { callRpc } from './utils/rpc';
 
-const NETWORK = WalletAdapterNetwork.Mainnet;
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
 
@@ -207,14 +205,13 @@ function AppContent() {
   const [treatPrice, setTreatPrice] = useState(0);
   const [toast, setToast] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [activeWalletType, setActiveWalletType] = useState(null); // 'phantom' or 'fixorium'
+  const [activeWalletType, setActiveWalletType] = useState(null);
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type });
     setTimeout(() => setToast(null), 5000);
   };
 
-  // Get the active wallet address
   const getActiveAddress = () => {
     if (fixoriumWallet.isConnected && fixoriumWallet.publicKey) {
       return fixoriumWallet.publicKey;
@@ -225,13 +222,11 @@ function AppContent() {
     return null;
   };
 
-  // Check if any wallet is connected
   const isWalletConnected = () => {
     return (fixoriumWallet.isConnected && fixoriumWallet.publicKey) || 
            (phantomConnected && phantomAddress);
   };
 
-  // Fetch balances for a given address
   const fetchBalances = async (pubKeyStr) => {
     console.log('📊 Fetching balances for:', pubKeyStr);
     
@@ -281,7 +276,6 @@ function AppContent() {
     }
   };
 
-  // Refresh balances for the active wallet
   const refreshBalances = async () => {
     const address = getActiveAddress();
     if (address) {
@@ -289,13 +283,13 @@ function AppContent() {
     }
   };
 
-  // Make refreshBalances available globally
   useEffect(() => {
     window.refreshBalances = refreshBalances;
   }, []);
 
-  // Check for Fixorium connection on mount
+  // Check for stored connections on mount
   useEffect(() => {
+    // Check Fixorium
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
@@ -304,7 +298,7 @@ function AppContent() {
           fixoriumWallet.publicKey = data.publicKey;
           fixoriumWallet.isConnected = true;
           setActiveWalletType('fixorium');
-          console.log('✅ Fixorium wallet restored from localStorage');
+          console.log('✅ Fixorium wallet restored');
           setTimeout(() => {
             fetchBalances(data.publicKey);
           }, 500);
@@ -312,10 +306,23 @@ function AppContent() {
       } catch (e) {}
     }
 
-    // DO NOT auto-check Phantom connection on mount
-    // Phantom should ONLY connect when user explicitly clicks it
+    // Check Phantom - MANUAL ONLY, no auto-connect
+    // Only check if Phantom is already connected (user connected it manually before)
+    const checkPhantom = async () => {
+      if (window.phantom?.solana?.isConnected && window.phantom?.solana?.publicKey) {
+        const pubKey = window.phantom.solana.publicKey.toString();
+        setPhantomAddress(pubKey);
+        setPhantomConnected(true);
+        setActiveWalletType('phantom');
+        await fetchBalances(pubKey);
+        console.log('🟣 Phantom wallet detected (already connected)');
+      }
+    };
+    
+    // Small delay to let Phantom initialize
+    setTimeout(checkPhantom, 1000);
 
-    // Listen for storage changes (Fixorium)
+    // Listen for storage changes
     const handleStorageChange = (e) => {
       if (e.key === 'fixorium_connection') {
         if (e.newValue) {
@@ -347,7 +354,7 @@ function AppContent() {
 
     window.addEventListener('storage', handleStorageChange);
 
-    // Phantom wallet events - only listen for user-initiated disconnects
+    // Phantom disconnect event
     if (window.phantom?.solana) {
       const handleDisconnect = () => {
         console.log('🟣 Phantom disconnected');
@@ -376,7 +383,6 @@ function AppContent() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Connect wallet - MANUAL ONLY
   const connectWallet = async (walletType = 'phantom') => {
     if (walletType === 'fixorium') {
       try {
@@ -398,6 +404,8 @@ function AppContent() {
         }));
         await fetchBalances(connection.publicKey);
         showToast('✅ Connected', `Connected to Fixorium Wallet`, 'success');
+        // Navigate to buy after connection
+        setActiveSection('buy');
       } catch (error) {
         showToast('❌ Connection Failed', error.message || 'Failed to connect Fixorium wallet', 'error');
       } finally {
@@ -427,6 +435,8 @@ function AppContent() {
       setActiveWalletType('phantom');
       await fetchBalances(pubKey);
       showToast('✅ Connected', `Connected to ${pubKey.slice(0, 6)}...${pubKey.slice(-6)}`, 'success');
+      // Navigate to buy after connection
+      setActiveSection('buy');
     } catch (error) {
       showToast('❌ Connection Failed', error.message || 'Failed to connect wallet', 'error');
     } finally {
@@ -434,7 +444,6 @@ function AppContent() {
     }
   };
 
-  // Disconnect wallet
   const disconnectWallet = async () => {
     if (activeWalletType === 'fixorium') {
       fixoriumWallet.disconnect();
@@ -490,7 +499,6 @@ function AppContent() {
     return () => clearInterval(interval);
   }, []);
 
-  // Get active wallet info
   const getActiveWalletInfo = () => {
     if (fixoriumWallet.isConnected && fixoriumWallet.publicKey) {
       return {
@@ -518,16 +526,12 @@ function AppContent() {
   const displayAddress = activeWallet.address || '';
   const displayWalletType = activeWallet.type;
 
-  // Log current state
   console.log('🔍 App State:', {
     activeWalletType: displayWalletType,
     displayAddress: displayAddress,
-    fixoriumConnected: fixoriumWallet.isConnected,
-    fixoriumAddress: fixoriumWallet.publicKey,
-    phantomConnected: phantomConnected,
-    phantomAddress: phantomAddress,
     solBalance: solBalance,
-    treatBalance: treatBalance
+    treatBalance: treatBalance,
+    activeSection: activeSection
   });
 
   const sections = {

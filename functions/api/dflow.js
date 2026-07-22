@@ -72,10 +72,9 @@ export async function onRequest(context) {
       });
     }
 
-    // ✅ FIX: Add /v1/ prefix to the endpoint
     const DFLOW_ENDPOINTS = {
-      quote: '/v1/quote',
-      swap: '/v1/swap',
+      quote: '/quote',
+      swap: '/swap',
     };
 
     const endpointPath = DFLOW_ENDPOINTS[endpoint];

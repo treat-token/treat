@@ -1,5 +1,5 @@
 // src/components/Header.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
 
@@ -121,20 +121,31 @@ export default function Header({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const isConnectingRef = useRef(false);
 
+  // Check for existing connection on mount - ONLY ONCE
   useEffect(() => {
     const stored = localStorage.getItem('fixorium_connection');
-    if (stored) {
+    if (stored && !walletConnected) {
       try {
         const data = JSON.parse(stored);
-        if (data.publicKey && !walletConnected) {
-          if (onConnect) {
-            onConnect('fixorium');
+        if (data.publicKey) {
+          // Only restore if not already connecting
+          if (!isConnectingRef.current) {
+            isConnectingRef.current = true;
+            fixoriumWallet.publicKey = data.publicKey;
+            fixoriumWallet.isConnected = true;
+            if (onConnect) {
+              onConnect('fixorium');
+            }
+            setTimeout(() => {
+              isConnectingRef.current = false;
+            }, 1000);
           }
         }
       } catch (e) {}
     }
-  }, []);
+  }, []); // Empty dependency array - runs only once
 
   const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
 
@@ -154,7 +165,11 @@ export default function Header({
   };
 
   const handleConnectPhantom = async () => {
+    // Prevent multiple connection attempts
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
     setIsConnecting(true);
+    
     try {
       if (window.phantom?.solana) {
         const result = await window.phantom.solana.connect();
@@ -163,7 +178,6 @@ export default function Header({
           onConnect('phantom');
         }
         setShowWalletModal(false);
-        // Navigate to buy after connection
         handleNavigate('buy');
       } else {
         window.open('https://phantom.app/', '_blank');
@@ -174,24 +188,33 @@ export default function Header({
       alert('Failed to connect Phantom wallet');
     } finally {
       setIsConnecting(false);
+      setTimeout(() => {
+        isConnectingRef.current = false;
+      }, 500);
     }
   };
 
   const handleConnectFixorium = async () => {
+    // Prevent multiple connection attempts
+    if (isConnectingRef.current) return;
+    isConnectingRef.current = true;
     setIsConnecting(true);
+    
     try {
       const connection = await fixoriumWallet.connect();
       if (onConnect) {
         onConnect('fixorium');
       }
       setShowWalletModal(false);
-      // Navigate to buy after connection
       handleNavigate('buy');
     } catch (error) {
       console.error('Fixorium connection error:', error);
       alert('Failed to connect Fixorium Wallet');
     } finally {
       setIsConnecting(false);
+      setTimeout(() => {
+        isConnectingRef.current = false;
+      }, 500);
     }
   };
 
@@ -199,7 +222,6 @@ export default function Header({
     if (onDisconnect) {
       onDisconnect();
     }
-    // After disconnect, stay on current page
   };
 
   const getWalletDisplay = () => {
@@ -233,7 +255,7 @@ export default function Header({
           </a>
 
           <div className="nav-right">
-            {walletDisplay && (
+            {walletDisplay ? (
               <div className="header-wallet-status">
                 <span className="status-dot connected"></span>
                 <span className="wallet-icon">{walletDisplay.icon}</span>
@@ -245,7 +267,7 @@ export default function Header({
                   Disconnect
                 </button>
               </div>
-            )}
+            ) : null}
 
             <button className="cta" onClick={handleBuyTreat}>
               BUY TREAT

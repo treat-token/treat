@@ -104,18 +104,30 @@ export async function onRequest(context) {
     // Handle error responses
     if (!response.ok) {
       let errorText;
+      let errorJson = null;
       try {
-        errorText = await response.text();
+        const text = await response.text();
+        errorText = text;
+        try {
+          errorJson = JSON.parse(text);
+        } catch {}
       } catch {
         errorText = 'Unable to read error response';
       }
-      
-      console.error('DFlow API error:', errorText);
-      
-      return new Response(JSON.stringify({ 
+
+      console.error('DFlow API error:');
+      console.error('Status:', response.status);
+      console.error('URL:', url);
+      console.error('Method:', method.toUpperCase());
+      console.error('Request data:', data);
+      console.error('Response text:', errorText);
+      console.error('Response JSON:', errorJson);
+
+      return new Response(JSON.stringify({
         error: `DFlow API error: ${response.status}`,
         status: response.status,
-        details: errorText
+        details: errorText,
+        parsedError: errorJson
       }), {
         status: response.status,
         headers: {

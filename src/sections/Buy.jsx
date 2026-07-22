@@ -125,19 +125,23 @@ export default function Buy({
 
   const getDflowQuote = async (amount) => {
     console.log('Fetching quote from DFlow via proxy...');
-    console.log('From:', SOL_MINT);
-    console.log('To:', TREAT_MINT_ADDRESS);
-    console.log('Amount:', amount);
-    
-    const data = await callDflowApi('quote', 'GET', {
+    console.log('From (SOL):', SOL_MINT);
+    console.log('To (TREAT):', TREAT_MINT_ADDRESS);
+    console.log('Amount (lamports):', amount);
+
+    const quoteParams = {
       inputMint: SOL_MINT,
       outputMint: TREAT_MINT_ADDRESS,
       amount: amount.toString(),
       slippageBps: '50',
-    });
+    };
+
+    console.log('Quote request params:', quoteParams);
+
+    const data = await callDflowApi('quote', 'GET', quoteParams);
 
     console.log('✅ Quote received:', data);
-    
+
     if (!data || !data.routePlan) {
       throw new Error('No quote received from DFlow');
     }

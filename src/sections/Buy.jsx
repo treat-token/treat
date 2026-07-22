@@ -38,7 +38,6 @@ class FixoriumWalletConnector {
             this.publicKey = publicKey;
             this.isConnected = true;
             this.closePopup();
-            // Trigger connection event
             if (this.onConnect) this.onConnect(publicKey);
           }
         }
@@ -109,7 +108,6 @@ class FixoriumWalletConnector {
         if (this.popupWindow) {
           this.popupWindow.focus();
         } else {
-          // Popup blocked - redirect
           window.location.href = webUrl;
         }
       } catch (e) {
@@ -136,7 +134,6 @@ class FixoriumWalletConnector {
       const requestId = 'tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
       this.pendingRequests.set(requestId, { resolve, reject });
 
-      // Serialize transaction
       const serialized = transaction.serialize();
       const transactionBase64 = btoa(String.fromCharCode.apply(null, serialized));
 
@@ -183,6 +180,7 @@ class FixoriumWalletConnector {
     this.isConnected = false;
     this.pendingRequests.clear();
     this.closePopup();
+    localStorage.removeItem('fixorium_connection');
   }
 
   getWalletInfo() {
@@ -217,30 +215,46 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
-  const [walletType, setWalletType] = useState(null); // 'phantom' or 'fixorium'
+  const [walletType, setWalletType] = useState(null);
   const [isFixoriumConnecting, setIsFixoriumConnecting] = useState(false);
+  const [fixoriumAddress, setFixoriumAddress] = useState(null);
 
   useEffect(() => {
     fetchSolPrice();
     checkFixoriumConnection();
+    // Listen for wallet changes
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  const checkFixoriumConnection = async () => {
+  const handleStorageChange = (e) => {
+    if (e.key === 'fixorium_connection') {
+      checkFixoriumConnection();
+    }
+  };
+
+  const checkFixoriumConnection = () => {
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
         const data = JSON.parse(stored);
-        if (data.publicKey && fixoriumWallet) {
+        if (data.publicKey) {
           fixoriumWallet.publicKey = data.publicKey;
           fixoriumWallet.isConnected = true;
+          setFixoriumAddress(data.publicKey);
           setWalletType('fixorium');
-          // Update parent component
-          if (window.updateWalletInfo) {
-            window.updateWalletInfo(data.publicKey, 'fixorium');
-          }
+          console.log('✅ Fixorium wallet detected in Buy.jsx');
+          return true;
         }
       } catch (e) {}
     }
+    // If Fixorium not connected, check Phantom
+    if (walletConnected && walletAddress) {
+      setWalletType('phantom');
+      return true;
+    }
+    setWalletType(null);
+    return false;
   };
 
   const fetchSolPrice = async () => {
@@ -294,11 +308,17 @@ export default function Buy({
     setIsFixoriumConnecting(true);
     try {
       const connection = await fixoriumWallet.connect();
+      setFixoriumAddress(connection.publicKey);
       setWalletType('fixorium');
-      if (window.updateWalletInfo) {
-        window.updateWalletInfo(connection.publicKey, 'fixorium');
-      }
+      localStorage.setItem('fixorium_connection', JSON.stringify({
+        publicKey: connection.publicKey,
+        connectedAt: Date.now()
+      }));
       showToast('✅ Fixorium Wallet Connected!', 'Wallet connected successfully', 'success');
+      // Notify parent
+      if (window.onFixoriumConnect) {
+        window.onFixoriumConnect(connection.publicKey);
+      }
     } catch (error) {
       console.error('Fixorium connection error:', error);
       showToast('❌ Connection Failed', 'Could not connect to Fixorium Wallet', 'error');
@@ -308,8 +328,11 @@ export default function Buy({
   };
 
   const handleSwapClick = () => {
-    if (!walletConnected && !fixoriumWallet.isConnected) {
-      showToast('❌ Not Connected', 'Please connect your wallet using the header button or Fixorium Wallet', 'error');
+    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumAddress;
+    const isPhantomConnected = walletConnected && walletAddress;
+
+    if (!isPhantomConnected && !isFixoriumConnected) {
+      showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
       return;
     }
 
@@ -319,8 +342,7 @@ export default function Buy({
       return;
     }
 
-    const balance = walletType === 'fixorium' ? solBalance : solBalance;
-    if (amount > balance) {
+    if (amount > solBalance) {
       showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
       return;
     }
@@ -378,8 +400,9 @@ export default function Buy({
   };
 
   const getDflowSwap = async (quoteData) => {
+    const currentAddress = fixoriumAddress || walletAddress;
     const data = await callDflowApi('swap', 'POST', {
-      userPublicKey: walletAddress || fixoriumWallet.publicKey,
+      userPublicKey: currentAddress,
       quoteResponse: quoteData,
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 150000,
@@ -402,10 +425,11 @@ export default function Buy({
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
-    const currentWalletAddress = walletAddress || fixoriumWallet.publicKey;
-    const isFixorium = walletType === 'fixorium' || (!walletConnected && fixoriumWallet.isConnected);
+    const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumAddress;
+    const isPhantomConnected = walletConnected && walletAddress;
+    const currentAddress = fixoriumAddress || walletAddress;
 
-    if (!currentWalletAddress) {
+    if (!currentAddress) {
       showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
       return;
     }
@@ -416,22 +440,20 @@ export default function Buy({
       return;
     }
 
-    const balance = isFixorium ? solBalance : solBalance;
-    if (amount > balance) {
+    if (amount > solBalance) {
       showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
       return;
     }
 
     setIsSwapping(true);
     try {
-      // Check if Phantom is available (for Phantom users)
       const hasPhantom = !!window.phantom?.solana;
-      const usePhantom = !isFixorium && hasPhantom && walletConnected;
+      const usePhantom = isPhantomConnected && hasPhantom && !isFixoriumConnected;
 
       console.log('🔄 Starting swap with DFlow...');
       console.log('Amount:', amount);
-      console.log('Wallet:', currentWalletAddress);
-      console.log('Wallet Type:', isFixorium ? 'Fixorium' : 'Phantom');
+      console.log('Wallet:', currentAddress);
+      console.log('Wallet Type:', isFixoriumConnected ? 'Fixorium' : 'Phantom');
 
       // Convert SOL to lamports (1 SOL = 1e9 lamports)
       const amountInLamports = Math.floor(amount * 1e9);
@@ -487,7 +509,6 @@ export default function Buy({
 
       // 4. Send transaction with appropriate wallet
       if (usePhantom) {
-        // Phantom Wallet
         console.log('📝 Requesting Phantom to sign and send transaction...');
         try {
           const result = await window.phantom.solana.signAndSendTransaction(transaction);
@@ -499,8 +520,7 @@ export default function Buy({
           }
           throw new Error(`Failed to send transaction: ${phantomError.message}`);
         }
-      } else {
-        // Fixorium Wallet
+      } else if (isFixoriumConnected) {
         console.log('📝 Requesting Fixorium Wallet to sign and send transaction...');
         try {
           const result = await fixoriumWallet.signAndSendTransaction(transaction);
@@ -509,6 +529,8 @@ export default function Buy({
           console.error('Fixorium error:', fixoriumError);
           throw new Error(`Failed to send transaction with Fixorium Wallet: ${fixoriumError.message}`);
         }
+      } else {
+        throw new Error('No wallet available to sign transaction');
       }
 
       console.log('✅ Transaction sent! Signature:', signature);
@@ -589,6 +611,13 @@ export default function Buy({
     }
   };
 
+  // Determine which wallet is connected
+  const isFixoriumConnected = fixoriumWallet.isConnected && fixoriumAddress;
+  const isPhantomConnected = walletConnected && walletAddress;
+  const isWalletConnected = isPhantomConnected || isFixoriumConnected;
+  const displayAddress = fixoriumAddress || walletAddress || '';
+  const displayWalletType = isFixoriumConnected ? 'fixorium' : (isPhantomConnected ? 'phantom' : null);
+
   return (
     <div className="card" style={{ padding: '1.5rem' }}>
       <div className="section-header" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
@@ -601,10 +630,10 @@ export default function Buy({
           Swap <span className="highlight">SOL → TREAT</span>
         </div>
 
-        {!walletConnected && !fixoriumWallet.isConnected ? (
+        {!isWalletConnected ? (
           <div style={{ 
             textAlign: 'center', 
-            padding: '2rem 1rem',
+            padding: '3rem 1rem',
             background: '#121010',
             borderRadius: '20px',
             border: '1px solid #1f1a18',
@@ -612,62 +641,9 @@ export default function Buy({
           }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
             <h3 style={{ color: '#f0ece8', marginBottom: '0.5rem' }}>Wallet Not Connected</h3>
-            <p style={{ color: '#a89890', fontSize: '0.9rem', marginBottom: '1rem' }}>
-              Choose your wallet to connect
+            <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
+              Please connect your wallet using the header button
             </p>
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
-              {/* Phantom Connect Button - Only show if Phantom is available or show connect option */}
-              <button
-                onClick={() => {
-                  if (window.phantom?.solana) {
-                    if (window.connectWallet) window.connectWallet();
-                  } else {
-                    window.open('https://phantom.app/', '_blank');
-                    showToast('ℹ️ Install Phantom', 'Please install Phantom wallet extension first', 'info');
-                  }
-                }}
-                style={{
-                  padding: '0.8rem 1.5rem',
-                  background: 'linear-gradient(135deg, #5344FF, #7a2be0)',
-                  border: 'none',
-                  borderRadius: '40px',
-                  color: '#fff',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <img 
-                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 397.7 311.7'%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill:%2314f195%7D%3C/style%3E%3C/defs%3E%3Cpath class='a' d='M64.6,237.9c2.4-2.4,5.7-3.8,9.2-3.8h317.4c5.8,0,8.7,7,4.6,11.1L372.6,271c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M64.6,3.8C67,1.4,70.3,0,73.8,0H391.2c5.8,0,8.7,7,4.6,11.1L372.6,40.6c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M333.1,120.9c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8,0-8.7,7-4.6,11.1l25.2,25.2c2.4,2.4,5.7,3.8,9.2,3.8H357.7c5.8,0,8.7-7,4.6-11.1Z'/%3E%3C/svg%3E"
-                  style={{ width: '20px', height: '16px' }}
-                  alt="Phantom"
-                />
-                Phantom
-              </button>
-              <button
-                onClick={handleConnectFixorium}
-                disabled={isFixoriumConnecting}
-                style={{
-                  padding: '0.8rem 1.5rem',
-                  background: isFixoriumConnecting ? '#2a2220' : 'linear-gradient(135deg, #00D4FF, #0099cc)',
-                  border: 'none',
-                  borderRadius: '40px',
-                  color: isFixoriumConnecting ? '#6b5f58' : '#0A0A0F',
-                  fontSize: '0.85rem',
-                  fontWeight: 700,
-                  cursor: isFixoriumConnecting ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <span style={{ fontSize: '1.2rem' }}>🔷</span>
-                {isFixoriumConnecting ? 'CONNECTING...' : 'Fixorium Wallet'}
-              </button>
-            </div>
           </div>
         ) : (
           <>
@@ -683,13 +659,11 @@ export default function Buy({
             }}>
               <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
                 Connected via: <strong style={{ color: '#f0ece8' }}>
-                  {walletType === 'fixorium' ? '🔷 Fixorium' : '🟣 Phantom'}
+                  {displayWalletType === 'fixorium' ? '🔷 Fixorium' : '🟣 Phantom'}
                 </strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
-                {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)} 
-                {!walletAddress && fixoriumWallet.publicKey && 
-                  `${fixoriumWallet.publicKey.slice(0, 6)}...${fixoriumWallet.publicKey.slice(-4)}`}
+                {displayAddress.slice(0, 6)}...{displayAddress.slice(-6)}
               </span>
             </div>
 

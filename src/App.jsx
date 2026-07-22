@@ -34,6 +34,7 @@ class FixoriumWalletConnector {
     this.pendingRequests = new Map();
     this.onConnectCallback = null;
     this.setupMessageListener();
+    this.restoreConnection();
   }
 
   setupMessageListener() {
@@ -51,6 +52,7 @@ class FixoriumWalletConnector {
           if (publicKey) {
             this.publicKey = publicKey;
             this.isConnected = true;
+            this.saveConnection();
             this.closePopup();
             if (this.onConnectCallback) {
               this.onConnectCallback(publicKey);
@@ -66,6 +68,32 @@ class FixoriumWalletConnector {
         // Not JSON
       }
     });
+  }
+
+  restoreConnection() {
+    try {
+      const saved = localStorage.getItem('fixorium_wallet_state');
+      if (saved) {
+        const state = JSON.parse(saved);
+        if (state.publicKey && state.isConnected) {
+          this.publicKey = state.publicKey;
+          this.isConnected = true;
+          console.log('🔐 Restored wallet connection:', this.publicKey);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to restore wallet state:', error);
+    }
+  }
+
+  saveConnection() {
+    if (this.isConnected && this.publicKey) {
+      localStorage.setItem('fixorium_wallet_state', JSON.stringify({
+        publicKey: this.publicKey,
+        isConnected: this.isConnected,
+        timestamp: Date.now()
+      }));
+    }
   }
 
   closePopup() {
@@ -178,6 +206,7 @@ class FixoriumWalletConnector {
     this.pendingRequests.clear();
     this.closePopup();
     localStorage.removeItem('fixorium_connection');
+    localStorage.removeItem('fixorium_wallet_state');
   }
 
   getWalletInfo() {
@@ -209,6 +238,18 @@ function AppContent() {
   const [toast, setToast] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const isFirstLoadRef = useRef(true);
+
+  useEffect(() => {
+    if (isFirstLoadRef.current) {
+      isFirstLoadRef.current = false;
+      if (fixoriumWallet.isConnected && fixoriumWallet.publicKey) {
+        setWalletAddress(fixoriumWallet.publicKey);
+        setWalletConnected(true);
+        fetchBalances(fixoriumWallet.publicKey);
+        console.log('✅ Restored wallet connection from storage');
+      }
+    }
+  }, []);
 
   const showToast = (title, message, type = 'success') => {
     setToast({ title, message, type });

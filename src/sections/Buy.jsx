@@ -1,657 +1,565 @@
-// src/components/Header.jsx
+// src/sections/Buy.jsx
 import React, { useState, useEffect } from 'react';
+import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { callRpc } from '../utils/rpc';
 
-const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
+const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
+const SOL_MINT = 'So11111111111111111111111111111111111111112';
 
-// Fixorium Wallet Connector
-class FixoriumWalletConnector {
-  constructor() {
-    this.publicKey = null;
-    this.isConnected = false;
-    this.popupWindow = null;
-    this.onConnectCallback = null;
-    this.setupMessageListener();
-  }
-
-  setupMessageListener() {
-    window.addEventListener('message', (event) => {
-      if (event.origin !== FIXORIUM_WALLET_URL && event.origin !== window.location.origin) {
-        return;
-      }
-
-      try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        console.log('📩 Fixorium Wallet message:', data);
-
-        if (data.type === 'CONNECTION_APPROVED' || data.type === 'WALLET_CONNECTED') {
-          const publicKey = data.payload?.publicKey || data.publicKey;
-          if (publicKey) {
-            this.publicKey = publicKey;
-            this.isConnected = true;
-            this.closePopup();
-            if (this.onConnectCallback) {
-              this.onConnectCallback(publicKey);
-            }
-          }
-        }
-
-        if (data.type === 'CONNECTION_REJECTED') {
-          this.isConnected = false;
-          this.closePopup();
-        }
-      } catch (error) {
-        // Not JSON
-      }
-    });
-  }
-
-  closePopup() {
-    if (this.popupWindow && !this.popupWindow.closed) {
-      this.popupWindow.close();
-      this.popupWindow = null;
-    }
-  }
-
-  async connect() {
-    return new Promise((resolve, reject) => {
-      const requestId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-
-      this.onConnectCallback = (publicKey) => {
-        resolve({ publicKey });
-      };
-
-      const params = new URLSearchParams();
-      params.append('requestId', requestId);
-      params.append('message', 'Connect to TREAT App');
-      params.append('appName', 'TREAT App');
-      params.append('appUrl', window.location.origin);
-      params.append('callbackUrl', window.location.origin + '/callback');
-
-      const webUrl = `${FIXORIUM_WALLET_URL}/sign?${params.toString()}`;
-
-      console.log('🔗 Opening Fixorium Wallet...');
-
-      try {
-        this.popupWindow = window.open(
-          webUrl,
-          'FixoriumWallet',
-          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
-        );
-        if (this.popupWindow) {
-          this.popupWindow.focus();
-        } else {
-          window.location.href = webUrl;
-        }
-      } catch (e) {
-        reject(new Error('Failed to open Fixorium Wallet'));
-      }
-
-      setTimeout(() => {
-        if (this.popupWindow && !this.popupWindow.closed) {
-          this.popupWindow.close();
-          this.popupWindow = null;
-        }
-        if (!this.isConnected) {
-          reject(new Error('Connection timeout'));
-        }
-      }, 60000);
-    });
-  }
-
-  disconnect() {
-    this.publicKey = null;
-    this.isConnected = false;
-    this.closePopup();
-    localStorage.removeItem('fixorium_connection');
-  }
-}
-
-const fixoriumWallet = new FixoriumWalletConnector();
-
-export default function Header({ 
-  activeSection, 
-  onNavigate, 
+export default function Buy({ 
   walletConnected, 
   walletAddress, 
-  onConnect, 
-  onDisconnect,
-  isLoading,
-  activeWalletType
+  solBalance, 
+  treatBalance, 
+  treatPrice, 
+  showToast,
+  isLoading
 }) {
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [showWalletModal, setShowWalletModal] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [swapInput, setSwapInput] = useState('');
+  const [swapOutput, setSwapOutput] = useState('0.0');
+  const [usdValue, setUsdValue] = useState('~ $0.00');
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [solPrice, setSolPrice] = useState(150);
+  const [showConfirmDialog, setShowConfirmDialog] = useState(false);
+  const [confirmData, setConfirmData] = useState(null);
 
-  // Check for stored Fixorium connection on mount
   useEffect(() => {
-    const stored = localStorage.getItem('fixorium_connection');
-    if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        if (data.publicKey && !walletConnected) {
-          // Fixorium is already connected, update parent
-          if (onConnect) {
-            onConnect('fixorium');
-          }
-        }
-      } catch (e) {}
-    }
+    fetchSolPrice();
   }, []);
 
-  const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
-
-  const handleNavigate = (section) => {
-    onNavigate(section);
-    setDropdownOpen(false);
+  const fetchSolPrice = async () => {
+    try {
+      const response = await fetch('https://api.dexscreener.com/latest/dex/search?q=SOL');
+      if (response.ok) {
+        const data = await response.json();
+        if (data.pairs && data.pairs.length > 0) {
+          const pair = data.pairs.find(p => p.baseToken?.symbol === 'SOL');
+          if (pair?.priceUsd) {
+            setSolPrice(parseFloat(pair.priceUsd));
+            return;
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('SOL price fetch error:', error);
+    }
+    setSolPrice(150);
   };
 
-  const handleBuyTreat = () => {
-    // If already connected, go to buy section
-    if (walletConnected) {
-      handleNavigate('buy');
+  const handleSwapInput = (value) => {
+    setSwapInput(value);
+    if (!value || isNaN(value) || parseFloat(value) <= 0) {
+      setSwapOutput('0.0');
+      setUsdValue('~ $0.00');
       return;
     }
-    // Otherwise show wallet selection modal
-    setShowWalletModal(true);
+
+    const amount = parseFloat(value);
+    const usd = amount * solPrice;
+    setUsdValue(`~ $${usd.toFixed(2)}`);
+
+    if (treatPrice > 0) {
+      const output = amount * (solPrice / treatPrice);
+      setSwapOutput(output.toFixed(4));
+    } else {
+      setSwapOutput('0.0');
+    }
   };
 
-  const handleConnectPhantom = async () => {
-    setIsConnecting(true);
+  const handleMaxClick = () => {
+    if (solBalance > 0) {
+      const value = solBalance.toFixed(4);
+      setSwapInput(value);
+      handleSwapInput(value);
+    }
+  };
+
+  const handleSwapClick = () => {
+    if (!walletConnected) {
+      showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
+      return;
+    }
+
+    const amount = parseFloat(swapInput);
+    if (!amount || amount <= 0) {
+      showToast('❌ Invalid Amount', 'Please enter a valid amount', 'error');
+      return;
+    }
+
+    if (amount > solBalance) {
+      showToast('❌ Insufficient Balance', `Not enough SOL in wallet (${solBalance.toFixed(4)} SOL)`, 'error');
+      return;
+    }
+
+    setConfirmData({
+      amount: amount,
+      output: swapOutput,
+      rate: solPrice / treatPrice,
+      walletType: 'Fixorium',
+      address: walletAddress
+    });
+    setShowConfirmDialog(true);
+  };
+
+  // DFlow API call via Cloudflare proxy
+  const callDflowApi = async (endpoint, method, data) => {
+    const response = await fetch('/api/dflow', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        endpoint: endpoint,
+        method: method,
+        data: data
+      })
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `API error: ${response.status}`);
+    }
+
+    return await response.json();
+  };
+
+  const getDflowQuote = async (amount) => {
+    console.log('Fetching quote from DFlow via proxy...');
+    console.log('From:', SOL_MINT);
+    console.log('To:', TREAT_MINT_ADDRESS);
+    console.log('Amount:', amount);
+    
+    const data = await callDflowApi('quote', 'GET', {
+      inputMint: SOL_MINT,
+      outputMint: TREAT_MINT_ADDRESS,
+      amount: amount.toString(),
+      slippageBps: '50',
+    });
+
+    console.log('✅ Quote received:', data);
+    
+    if (!data || !data.routePlan) {
+      throw new Error('No quote received from DFlow');
+    }
+
+    return data;
+  };
+
+  const getDflowSwap = async (quoteData) => {
+    const data = await callDflowApi('swap', 'POST', {
+      userPublicKey: walletAddress,
+      quoteResponse: quoteData,
+      dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: 150000,
+    });
+
+    console.log('✅ Swap transaction received');
+    return data;
+  };
+
+  // Helper function to convert base64 to Uint8Array
+  const base64ToUint8Array = (base64) => {
+    const binaryString = atob(base64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+    }
+    return bytes;
+  };
+
+  const handleSwap = async () => {
+    setShowConfirmDialog(false);
+
+    if (!walletConnected || !walletAddress) {
+      showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
+      return;
+    }
+
+    const amount = parseFloat(swapInput);
+    if (!amount || amount <= 0) {
+      showToast('❌ Invalid Amount', 'Please enter a valid amount', 'error');
+      return;
+    }
+
+    if (amount > solBalance) {
+      showToast('❌ Insufficient Balance', `Not enough SOL in wallet (${solBalance.toFixed(4)} SOL)`, 'error');
+      return;
+    }
+
+    setIsSwapping(true);
     try {
-      if (window.phantom?.solana) {
-        const result = await window.phantom.solana.connect();
-        const publicKey = result.publicKey.toString();
-        if (onConnect) {
-          onConnect('phantom');
+      console.log('🔄 Starting swap with DFlow...');
+      console.log('Amount:', amount);
+      console.log('Wallet:', walletAddress);
+
+      // Convert SOL to lamports (1 SOL = 1e9 lamports)
+      const amountInLamports = Math.floor(amount * 1e9);
+      
+      // 1. Get quote from DFlow
+      let quoteData;
+      try {
+        quoteData = await getDflowQuote(amountInLamports);
+        console.log('📊 Quote received:', quoteData);
+        
+        if (quoteData && quoteData.outAmount) {
+          const outAmount = parseFloat(quoteData.outAmount) / 1e6;
+          setSwapOutput(outAmount.toFixed(4));
         }
-        setShowWalletModal(false);
-        handleNavigate('buy');
+      } catch (quoteError) {
+        console.error('Quote error:', quoteError);
+        throw new Error(`Could not get swap quote: ${quoteError.message}`);
+      }
+
+      // 2. Get swap transaction from DFlow
+      let swapData;
+      try {
+        swapData = await getDflowSwap(quoteData);
+        console.log('📝 Swap transaction received');
+      } catch (swapError) {
+        console.error('Swap transaction error:', swapError);
+        throw new Error(`Could not create swap transaction: ${swapError.message}`);
+      }
+
+      if (!swapData || !swapData.swapTransaction) {
+        throw new Error('No swap transaction received from DFlow');
+      }
+
+      // 3. Deserialize the transaction
+      let transaction;
+      try {
+        const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
+        
+        try {
+          transaction = VersionedTransaction.deserialize(transactionBytes);
+          console.log('✅ Deserialized as VersionedTransaction');
+        } catch (versionedError) {
+          console.log('Falling back to legacy Transaction deserialization');
+          transaction = Transaction.from(transactionBytes);
+          console.log('✅ Deserialized as legacy Transaction');
+        }
+      } catch (txError) {
+        console.error('Transaction deserialization error:', txError);
+        throw new Error(`Failed to deserialize transaction: ${txError.message}`);
+      }
+
+      // 4. Get Fixorium wallet connector from window
+      const fixoriumConnector = window.fixoriumWalletConnector;
+      if (!fixoriumConnector) {
+        throw new Error('Fixorium wallet connector not found');
+      }
+
+      console.log('📝 Requesting Fixorium Wallet to sign and send transaction...');
+      const result = await fixoriumConnector.signAndSendTransaction(transaction);
+      const signature = result.signature;
+
+      console.log('✅ Transaction sent! Signature:', signature);
+
+      // 5. Wait for confirmation using RPC proxy
+      let confirmed = false;
+      let attempts = 0;
+      const maxAttempts = 30;
+
+      while (!confirmed && attempts < maxAttempts) {
+        try {
+          const status = await callRpc('getSignatureStatuses', [[signature]]);
+          if (status.value && status.value[0]) {
+            const txStatus = status.value[0];
+            if (txStatus.confirmationStatus === 'confirmed' || txStatus.confirmationStatus === 'finalized') {
+              confirmed = true;
+              console.log('✅ Transaction confirmed:', txStatus);
+            } else if (txStatus.err) {
+              throw new Error(`Transaction failed: ${JSON.stringify(txStatus.err)}`);
+            }
+          }
+        } catch (e) {
+          console.warn(`Confirmation check attempt ${attempts + 1}:`, e.message);
+        }
+
+        if (!confirmed) {
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          attempts++;
+        }
+      }
+
+      if (!confirmed) {
+        throw new Error('Transaction confirmation timeout. Check explorer for status.');
+      }
+
+      const outputAmount = swapData.outAmount 
+        ? parseFloat(swapData.outAmount) / 1e6 
+        : parseFloat(swapOutput);
+
+      showToast(
+        '✅ Swap Complete! 🎉',
+        `Successfully swapped ${amount} SOL for ${outputAmount.toFixed(4)} TREAT`,
+        'success'
+      );
+
+      setSwapInput('');
+      setSwapOutput('0.0');
+      setUsdValue('~ $0.00');
+
+      // Refresh balances
+      if (window.refreshBalances) {
+        setTimeout(async () => {
+          await window.refreshBalances();
+        }, 2000);
+      }
+
+    } catch (error) {
+      console.error('Swap error:', error);
+      
+      let errorMessage = error.message || 'Please try again';
+      
+      if (errorMessage.includes('User rejected')) {
+        showToast('❌ Transaction Rejected', 'You rejected the transaction in wallet', 'error');
+      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
+        showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
+      } else if (errorMessage.includes('timeout')) {
+        showToast('❌ Timeout', 'Transaction took too long. Check explorer for status.', 'error');
+      } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
+        showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
+      } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
+        showToast('❌ API Key Error', 'DFlow API key is missing or invalid. Please check environment variables.', 'error');
+      } else if (errorMessage.includes('insufficient balance')) {
+        showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
       } else {
-        window.open('https://phantom.app/', '_blank');
-        alert('Please install Phantom wallet extension first');
+        showToast('❌ Swap Failed', errorMessage, 'error');
       }
-    } catch (error) {
-      console.error('Phantom connection error:', error);
-      alert('Failed to connect Phantom wallet');
     } finally {
-      setIsConnecting(false);
+      setIsSwapping(false);
     }
   };
-
-  const handleConnectFixorium = async () => {
-    setIsConnecting(true);
-    try {
-      const connection = await fixoriumWallet.connect();
-      if (onConnect) {
-        onConnect('fixorium');
-      }
-      setShowWalletModal(false);
-      handleNavigate('buy');
-    } catch (error) {
-      console.error('Fixorium connection error:', error);
-      alert('Failed to connect Fixorium Wallet');
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  const handleDisconnect = () => {
-    if (onDisconnect) {
-      onDisconnect();
-    }
-    setShowWalletModal(true);
-  };
-
-  const handleOpenWalletModal = () => {
-    setShowWalletModal(true);
-  };
-
-  const getWalletDisplay = () => {
-    if (walletConnected && walletAddress) {
-      const isFixorium = activeWalletType === 'fixorium';
-      return {
-        name: isFixorium ? 'Fixorium' : 'Phantom',
-        icon: isFixorium ? '🔷' : '🟣',
-        address: walletAddress
-      };
-    }
-    return null;
-  };
-
-  const walletDisplay = getWalletDisplay();
 
   return (
-    <>
-      <header className="header">
-        <div className="header-inner">
-          <a 
-            href="#" 
-            className="brand" 
-            onClick={(e) => {
-              e.preventDefault();
-              handleNavigate('home');
-            }}
-          >
-            <img src="https://i.postimg.cc/d1CJyjt9/treat1727943702621.png" alt="TREAT Logo" />
-            TREAT<span>.</span>
-          </a>
+    <div className="card" style={{ padding: '1.5rem' }}>
+      <div className="section-header" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
+        <span className="accent green"></span>
+        BUY TREAT TOKEN
+      </div>
 
-          <div className="nav-right">
-            {walletDisplay ? (
-              <div className="header-wallet-status">
-                <span className="status-dot connected"></span>
-                <span className="wallet-icon">{walletDisplay.icon}</span>
-                <span className="wallet-name">{walletDisplay.name}</span>
-                <span className="wallet-addr">
-                  {`${walletDisplay.address.slice(0, 6)}...${walletDisplay.address.slice(-6)}`}
-                </span>
-                <button className="disconnect-btn" onClick={handleDisconnect}>
-                  Disconnect
-                </button>
-              </div>
-            ) : (
-              <button className="connect-btn" onClick={handleOpenWalletModal}>
-                Connect Wallet
-              </button>
-            )}
-
-            <button className="cta" onClick={handleBuyTreat}>
-              BUY TREAT
-            </button>
-
-            <div className="dropdown">
-              <button className="dropbtn" onClick={toggleDropdown}>
-                ☰
-              </button>
-              {dropdownOpen && (
-                <div className="dropdown-content show">
-                  <button 
-                    className={activeSection === 'home' ? 'active' : ''} 
-                    onClick={() => handleNavigate('home')}
-                  >
-                    HOME
-                  </button>
-                  <button 
-                    className={activeSection === 'about' ? 'active' : ''} 
-                    onClick={() => handleNavigate('about')}
-                  >
-                    ABOUT
-                  </button>
-                  <button 
-                    className={activeSection === 'tokenomics' ? 'active' : ''} 
-                    onClick={() => handleNavigate('tokenomics')}
-                  >
-                    TOKENOMICS
-                  </button>
-                  <button 
-                    className={activeSection === 'burn' ? 'active' : ''} 
-                    onClick={() => handleNavigate('burn')}
-                  >
-                    BURN
-                  </button>
-                  <button 
-                    className={activeSection === 'roadmap' ? 'active' : ''} 
-                    onClick={() => handleNavigate('roadmap')}
-                  >
-                    ROADMAP
-                  </button>
-                  <button 
-                    className={activeSection === 'faq' ? 'active' : ''} 
-                    onClick={() => handleNavigate('faq')}
-                  >
-                    FAQ
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+      <div className="swap-card">
+        <div className="swap-title">
+          Swap <span className="highlight">SOL → TREAT</span>
         </div>
-      </header>
 
-      {/* Wallet Selection Modal */}
-      {showWalletModal && (
-        <div className="wallet-modal-overlay" onClick={() => setShowWalletModal(false)}>
-          <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wallet-modal-header">
-              <h2>Connect Wallet</h2>
-              <button className="wallet-modal-close-btn" onClick={() => setShowWalletModal(false)}>✕</button>
-            </div>
-            <p>Choose your wallet to connect</p>
-            
-            <div className="wallet-options">
-              {/* Phantom Wallet */}
-              <button 
-                className="wallet-option phantom"
-                onClick={handleConnectPhantom}
-                disabled={isConnecting}
-              >
-                <div className="wallet-option-icon">
-                  <img 
-                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 397.7 311.7'%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill:%2314f195%7D%3C/style%3E%3C/defs%3E%3Cpath class='a' d='M64.6,237.9c2.4-2.4,5.7-3.8,9.2-3.8h317.4c5.8,0,8.7,7,4.6,11.1L372.6,271c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M64.6,3.8C67,1.4,70.3,0,73.8,0H391.2c5.8,0,8.7,7,4.6,11.1L372.6,40.6c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M333.1,120.9c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8,0-8.7,7-4.6,11.1l25.2,25.2c2.4,2.4,5.7,3.8,9.2,3.8H357.7c5.8,0,8.7-7,4.6-11.1Z'/%3E%3C/svg%3E"
-                    alt="Phantom"
-                  />
-                </div>
-                <div className="wallet-option-info">
-                  <span className="wallet-option-name">Phantom</span>
-                  <span className="wallet-option-desc">Solana Wallet</span>
-                </div>
-                <span className="wallet-option-arrow">→</span>
-              </button>
-
-              {/* Fixorium Wallet */}
-              <button 
-                className="wallet-option fixorium"
-                onClick={handleConnectFixorium}
-                disabled={isConnecting}
-              >
-                <div className="wallet-option-icon fixorium-icon">
-                  <span>🔷</span>
-                </div>
-                <div className="wallet-option-info">
-                  <span className="wallet-option-name">Fixorium Wallet</span>
-                  <span className="wallet-option-desc">Secure Solana Wallet</span>
-                </div>
-                <span className="wallet-option-arrow">→</span>
-              </button>
+        {!walletConnected ? (
+          <div style={{ 
+            text-align: 'center', 
+            padding: '3rem 1rem',
+            background: '#121010',
+            borderRadius: '20px',
+            border: '1px solid #1f1a18',
+            marginBottom: '1rem'
+          }}>
+            <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
+            <h3 style={{ color: '#f0ece8', marginBottom: '0.5rem' }}>Wallet Not Connected</h3>
+            <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
+              Please connect your Fixorium wallet
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              padding: '0.5rem 1rem',
+              background: '#121010',
+              borderRadius: '12px',
+              marginBottom: '1rem',
+              border: '1px solid #1f1a18'
+            }}>
+              <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
+                Connected via: <strong style={{ color: '#f0ece8' }}>🔷 Fixorium</strong>
+              </span>
+              <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
+                {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}` : 'No address'}
+              </span>
             </div>
 
-            {isConnecting && (
-              <div className="wallet-connecting">
-                <span className="spinner"></span>
-                Connecting...
+            <div className="swap-box">
+              <div className="swap-label">
+                <span>YOU PAY</span>
+                <span>Balance: {solBalance.toFixed(4)} SOL</span>
               </div>
-            )}
+              <div className="swap-input-row">
+                <input
+                  type="number"
+                  placeholder="0.0"
+                  value={swapInput}
+                  onChange={(e) => handleSwapInput(e.target.value)}
+                />
+                <div className="token-select">
+                  <img
+                    src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 397.7 311.7'%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill:%2314f195%7D%3C/style%3E%3C/defs%3E%3Cpath class='a' d='M64.6,237.9c2.4-2.4,5.7-3.8,9.2-3.8h317.4c5.8,0,8.7,7,4.6,11.1L372.6,271c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M64.6,3.8C67,1.4,70.3,0,73.8,0H391.2c5.8,0,8.7,7,4.6,11.1L372.6,40.6c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M333.1,120.9c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8,0-8.7,7-4.6,11.1l25.2,25.2c2.4,2.4,5.7,3.8,9.2,3.8H357.7c5.8,0,8.7-7,4.6-11.1Z'/%3E%3C/svg%3E"
+                    alt="SOL"
+                  />
+                  <span className="token-symbol">SOL</span>
+                </div>
+              </div>
+              <div className="balance-info">
+                <span>{usdValue}</span>
+                <span className="max-btn" onClick={handleMaxClick}>MAX</span>
+              </div>
+            </div>
 
-            <button 
-              className="wallet-modal-cancel"
-              onClick={() => setShowWalletModal(false)}
+            <div className="swap-arrow">⇅</div>
+
+            <div className="swap-box">
+              <div className="swap-label">
+                <span>YOU RECEIVE</span>
+                <span>Balance: {treatBalance.toFixed(2)} TREAT</span>
+              </div>
+              <div className="swap-input-row">
+                <input
+                  type="number"
+                  placeholder="0.0"
+                  value={swapOutput}
+                  readOnly
+                />
+                <div className="token-select">
+                  <img 
+                    src="https://i.postimg.cc/d1CJyjt9/treat1727943702621.png" 
+                    alt="TREAT" 
+                  />
+                  <span className="token-symbol">TREAT</span>
+                </div>
+              </div>
+              <div className="balance-info">
+                <span>~${(parseFloat(swapOutput) * treatPrice).toFixed(2)}</span>
+              </div>
+            </div>
+
+            <button
+              className="swap-btn"
+              onClick={handleSwapClick}
+              disabled={isSwapping || !swapInput || parseFloat(swapInput) <= 0}
             >
-              Cancel
+              {isSwapping ? (
+                <>
+                  <span className="spinner"></span>
+                  SWAPPING...
+                </>
+              ) : (
+                'SWAP NOW'
+              )}
             </button>
+
+            <div className="swap-details">
+              <div className="detail-row">
+                <span>Price Impact</span>
+                <span className="value">~0.05%</span>
+              </div>
+              <div className="detail-row">
+                <span>Network Fee</span>
+                <span className="value">~0.00005 SOL</span>
+              </div>
+              <div className="detail-row">
+                <span>Slippage Tolerance</span>
+                <span className="value">0.5%</span>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+
+      <div style={{ marginTop: '2rem', padding: '1.5rem', background: '#121010', borderRadius: '16px', border: '1px solid #1f1a18' }}>
+        <p style={{ color: '#bfb4ac', fontSize: '0.9rem', lineHeight: '1.8' }}>
+          <strong style={{ color: '#f0ece8' }}>MINT ADDRESS:</strong>
+        </p>
+        <p style={{ fontFamily: 'monospace', fontSize: '0.75rem', color: '#a89890', marginTop: '0.5rem', wordBreak: 'break-all' }}>
+          {TREAT_MINT_ADDRESS}
+        </p>
+      </div>
+
+      {showConfirmDialog && confirmData && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.85)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          backdropFilter: 'blur(8px)'
+        }}>
+          <div style={{
+            background: '#1a1614',
+            borderRadius: '24px',
+            padding: '2.5rem',
+            maxWidth: '440px',
+            width: '90%',
+            border: '1px solid #2a2220',
+            boxShadow: '0 30px 60px rgba(0,0,0,0.9)'
+          }}>
+            <h3 style={{ color: '#f0ece8', marginBottom: '1.5rem', textAlign: 'center', fontSize: '1.3rem' }}>
+              Confirm Swap
+            </h3>
+            
+            <div style={{ marginBottom: '1.5rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>You Pay</span>
+                <span style={{ color: '#f0ece8', fontWeight: 600 }}>{confirmData.amount.toFixed(4)} SOL</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>You Receive</span>
+                <span style={{ color: '#14F195', fontWeight: 600 }}>{parseFloat(confirmData.output).toFixed(4)} TREAT</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>Rate</span>
+                <span style={{ color: '#a89890' }}>1 SOL ≈ {confirmData.rate.toFixed(2)} TREAT</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0', borderBottom: '1px solid #1f1a18' }}>
+                <span style={{ color: '#6b5f58' }}>Wallet</span>
+                <span style={{ color: '#14F195', fontWeight: 600 }}>{confirmData.walletType}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem 0' }}>
+                <span style={{ color: '#6b5f58' }}>Slippage</span>
+                <span style={{ color: '#a89890' }}>0.5%</span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button
+                onClick={() => setShowConfirmDialog(false)}
+                style={{
+                  flex: 1,
+                  padding: '0.8rem',
+                  background: '#1f1a18',
+                  border: '1px solid #2a2220',
+                  borderRadius: '40px',
+                  color: '#a89890',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSwap}
+                style={{
+                  flex: 2,
+                  padding: '0.8rem',
+                  background: 'linear-gradient(135deg, #9945FF, #7a2be0)',
+                  border: 'none',
+                  borderRadius: '40px',
+                  color: '#fff',
+                  fontSize: '0.9rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                }}
+              >
+                Confirm Swap
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-      <style>{`
-        /* Wallet Modal Styles */
-        .wallet-modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.85);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 10000;
-          backdrop-filter: blur(8px);
-        }
-
-        .wallet-modal {
-          background: #1a1614;
-          border-radius: 24px;
-          padding: 2rem;
-          max-width: 420px;
-          width: 90%;
-          border: 1px solid #2a2220;
-          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9);
-        }
-
-        .wallet-modal-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-bottom: 0.5rem;
-        }
-
-        .wallet-modal-header h2 {
-          color: #f0ece8;
-          font-size: 1.5rem;
-        }
-
-        .wallet-modal-close-btn {
-          background: none;
-          border: none;
-          color: #6b5f58;
-          font-size: 1.5rem;
-          cursor: pointer;
-          padding: 4px 8px;
-          border-radius: 8px;
-          transition: all 0.3s ease;
-        }
-
-        .wallet-modal-close-btn:hover {
-          color: #f0ece8;
-          background: #1f1a18;
-        }
-
-        .wallet-modal p {
-          color: #6b5f58;
-          text-align: center;
-          margin-bottom: 1.5rem;
-          font-size: 0.9rem;
-        }
-
-        .wallet-options {
-          display: flex;
-          flex-direction: column;
-          gap: 0.8rem;
-          margin-bottom: 1.5rem;
-        }
-
-        .wallet-option {
-          display: flex;
-          align-items: center;
-          padding: 1rem 1.2rem;
-          background: #121010;
-          border: 1px solid #1f1a18;
-          border-radius: 16px;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          gap: 1rem;
-          width: 100%;
-        }
-
-        .wallet-option:hover:not(:disabled) {
-          border-color: #2a2220;
-          background: #1f1a18;
-          transform: translateX(4px);
-        }
-
-        .wallet-option:disabled {
-          opacity: 0.5;
-          cursor: not-allowed;
-        }
-
-        .wallet-option-icon {
-          width: 44px;
-          height: 44px;
-          border-radius: 12px;
-          background: #1f1a18;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          flex-shrink: 0;
-        }
-
-        .wallet-option-icon img {
-          width: 28px;
-          height: 28px;
-        }
-
-        .fixorium-icon {
-          background: linear-gradient(135deg, #00D4FF, #0099cc);
-          font-size: 22px;
-        }
-
-        .wallet-option-info {
-          flex: 1;
-          display: flex;
-          flex-direction: column;
-          align-items: flex-start;
-        }
-
-        .wallet-option-name {
-          color: #f0ece8;
-          font-weight: 600;
-          font-size: 0.95rem;
-        }
-
-        .wallet-option-desc {
-          color: #6b5f58;
-          font-size: 0.75rem;
-        }
-
-        .wallet-option-arrow {
-          color: #6b5f58;
-          font-size: 1.2rem;
-        }
-
-        .wallet-modal-cancel {
-          width: 100%;
-          padding: 0.8rem;
-          background: #1f1a18;
-          border: 1px solid #2a2220;
-          border-radius: 40px;
-          color: #a89890;
-          font-size: 0.9rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s ease;
-        }
-
-        .wallet-modal-cancel:hover {
-          background: #2a2220;
-        }
-
-        .wallet-connecting {
-          text-align: center;
-          color: #a89890;
-          font-size: 0.9rem;
-          margin-bottom: 1rem;
-        }
-
-        .spinner {
-          display: inline-block;
-          width: 16px;
-          height: 16px;
-          border: 2px solid #6b5f58;
-          border-top-color: #f0ece8;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          vertical-align: middle;
-          margin-right: 8px;
-        }
-
-        @keyframes spin {
-          to { transform: rotate(360deg); }
-        }
-
-        /* Header Styles */
-        .connect-btn {
-          padding: 8px 20px;
-          background: linear-gradient(135deg, #9945FF, #7a2be0);
-          border: none;
-          border-radius: 40px;
-          color: #fff;
-          font-size: 0.8rem;
-          font-weight: 700;
-          cursor: pointer;
-          transition: all 0.3s ease;
-          margin-right: 12px;
-        }
-
-        .connect-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 4px 15px rgba(153, 69, 255, 0.3);
-        }
-
-        .header-wallet-status {
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          background: #121010;
-          padding: 6px 12px 6px 8px;
-          border-radius: 40px;
-          border: 1px solid #1f1a18;
-          margin-right: 12px;
-        }
-
-        .status-dot {
-          width: 8px;
-          height: 8px;
-          border-radius: 50%;
-          background: #4a3f3a;
-        }
-
-        .status-dot.connected {
-          background: #14F195;
-          box-shadow: 0 0 8px rgba(20, 241, 149, 0.3);
-        }
-
-        .wallet-icon {
-          font-size: 14px;
-        }
-
-        .wallet-name {
-          font-size: 11px;
-          color: #a89890;
-          font-weight: 500;
-        }
-
-        .wallet-addr {
-          font-size: 12px;
-          color: #f0ece8;
-          font-weight: 500;
-          font-family: monospace;
-        }
-
-        .disconnect-btn {
-          background: transparent;
-          border: none;
-          color: #6b5f58;
-          font-size: 10px;
-          cursor: pointer;
-          padding: 2px 8px;
-          border-radius: 12px;
-          transition: all 0.3s ease;
-        }
-
-        .disconnect-btn:hover {
-          color: #f87171;
-          background: rgba(248, 113, 113, 0.1);
-        }
-
-        @media (max-width: 768px) {
-          .wallet-modal {
-            padding: 1.5rem;
-          }
-
-          .wallet-option {
-            padding: 0.8rem 1rem;
-          }
-
-          .header-wallet-status {
-            padding: 4px 8px 4px 6px;
-            margin-right: 6px;
-          }
-
-          .wallet-name {
-            display: none;
-          }
-
-          .wallet-addr {
-            font-size: 10px;
-          }
-
-          .connect-btn {
-            padding: 6px 14px;
-            font-size: 0.7rem;
-            margin-right: 6px;
-          }
-        }
-      `}</style>
-    </>
+    </div>
   );
 }

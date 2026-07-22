@@ -5,9 +5,201 @@ import { callRpc } from '../utils/rpc';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
+const FIXORIUM_WALLET_URL = 'https://wallet.fixorium.com.pk';
 
-// No API key needed - using proxy
 console.log('🔗 Buy.jsx using RPC proxy');
+
+// ============================================================
+// FIXORIUM WALLET CONNECTOR
+// ============================================================
+
+class FixoriumWalletConnector {
+  constructor() {
+    this.publicKey = null;
+    this.isConnected = false;
+    this.popupWindow = null;
+    this.pendingRequests = new Map();
+    this.setupMessageListener();
+  }
+
+  setupMessageListener() {
+    window.addEventListener('message', (event) => {
+      if (event.origin !== FIXORIUM_WALLET_URL && event.origin !== window.location.origin) {
+        return;
+      }
+
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        console.log('📩 Fixorium Wallet message:', data);
+
+        if (data.type === 'CONNECTION_APPROVED' || data.type === 'WALLET_CONNECTED') {
+          const publicKey = data.payload?.publicKey || data.publicKey;
+          if (publicKey) {
+            this.publicKey = publicKey;
+            this.isConnected = true;
+            this.closePopup();
+            // Trigger connection event
+            if (this.onConnect) this.onConnect(publicKey);
+          }
+        }
+
+        if (data.type === 'TRANSACTION_SIGNED' || data.type === 'TRANSACTION_APPROVED') {
+          const signature = data.payload?.signature || data.signature;
+          const requestId = data.requestId;
+          const pending = this.pendingRequests.get(requestId);
+          if (pending) {
+            pending.resolve({ signature });
+            this.pendingRequests.delete(requestId);
+          }
+          this.closePopup();
+        }
+
+        if (data.type === 'TRANSACTION_REJECTED') {
+          const requestId = data.requestId;
+          const pending = this.pendingRequests.get(requestId);
+          if (pending) {
+            pending.reject(new Error('Transaction rejected by user'));
+            this.pendingRequests.delete(requestId);
+          }
+          this.closePopup();
+        }
+
+        if (data.type === 'CONNECTION_REJECTED') {
+          this.isConnected = false;
+          this.closePopup();
+          if (this.onReject) this.onReject();
+        }
+      } catch (error) {
+        // Not JSON
+      }
+    });
+  }
+
+  closePopup() {
+    if (this.popupWindow && !this.popupWindow.closed) {
+      this.popupWindow.close();
+      this.popupWindow = null;
+    }
+  }
+
+  async connect() {
+    return new Promise((resolve, reject) => {
+      const requestId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+
+      this.onConnect = resolve;
+      this.onReject = reject;
+
+      const params = new URLSearchParams();
+      params.append('requestId', requestId);
+      params.append('message', 'Connect to Fixorium Swap');
+      params.append('appName', 'Fixorium Swap');
+      params.append('appUrl', window.location.origin);
+      params.append('callbackUrl', window.location.origin + '/callback');
+
+      const webUrl = `${FIXORIUM_WALLET_URL}/sign?${params.toString()}`;
+
+      console.log('🔗 Opening Fixorium Wallet...');
+
+      try {
+        this.popupWindow = window.open(
+          webUrl,
+          'FixoriumWallet',
+          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
+        );
+        if (this.popupWindow) {
+          this.popupWindow.focus();
+        } else {
+          // Popup blocked - redirect
+          window.location.href = webUrl;
+        }
+      } catch (e) {
+        reject(new Error('Failed to open Fixorium Wallet'));
+      }
+
+      setTimeout(() => {
+        if (this.popupWindow && !this.popupWindow.closed) {
+          this.popupWindow.close();
+          this.popupWindow = null;
+        }
+        reject(new Error('Connection timeout'));
+      }, 60000);
+    });
+  }
+
+  async signAndSendTransaction(transaction) {
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected || !this.publicKey) {
+        reject(new Error('Wallet not connected'));
+        return;
+      }
+
+      const requestId = 'tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+      this.pendingRequests.set(requestId, { resolve, reject });
+
+      // Serialize transaction
+      const serialized = transaction.serialize();
+      const transactionBase64 = btoa(String.fromCharCode.apply(null, serialized));
+
+      const params = new URLSearchParams();
+      params.append('requestId', requestId);
+      params.append('transaction', transactionBase64);
+      params.append('message', 'Sign Swap Transaction');
+      params.append('appName', 'Fixorium Swap');
+      params.append('appUrl', window.location.origin);
+      params.append('callbackUrl', window.location.origin + '/callback');
+
+      const webUrl = `${FIXORIUM_WALLET_URL}/sign?${params.toString()}`;
+
+      console.log('✍️ Opening Fixorium Wallet for signing...');
+
+      try {
+        this.popupWindow = window.open(
+          webUrl,
+          'FixoriumWallet',
+          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
+        );
+        if (this.popupWindow) {
+          this.popupWindow.focus();
+        } else {
+          window.location.href = webUrl;
+        }
+      } catch (e) {
+        reject(new Error('Failed to open Fixorium Wallet for signing'));
+        this.pendingRequests.delete(requestId);
+      }
+
+      setTimeout(() => {
+        if (this.pendingRequests.has(requestId)) {
+          this.pendingRequests.delete(requestId);
+          this.closePopup();
+          reject(new Error('Transaction signing timeout'));
+        }
+      }, 60000);
+    });
+  }
+
+  disconnect() {
+    this.publicKey = null;
+    this.isConnected = false;
+    this.pendingRequests.clear();
+    this.closePopup();
+  }
+
+  getWalletInfo() {
+    return {
+      publicKey: this.publicKey,
+      isConnected: this.isConnected,
+      platform: 'web'
+    };
+  }
+}
+
+// Create singleton instance
+const fixoriumWallet = new FixoriumWalletConnector();
+
+// ============================================================
+// BUY COMPONENT
+// ============================================================
 
 export default function Buy({ 
   walletConnected, 
@@ -25,10 +217,31 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
+  const [walletType, setWalletType] = useState(null); // 'phantom' or 'fixorium'
+  const [isFixoriumConnecting, setIsFixoriumConnecting] = useState(false);
 
   useEffect(() => {
     fetchSolPrice();
+    checkFixoriumConnection();
   }, []);
+
+  const checkFixoriumConnection = async () => {
+    const stored = localStorage.getItem('fixorium_connection');
+    if (stored) {
+      try {
+        const data = JSON.parse(stored);
+        if (data.publicKey && fixoriumWallet) {
+          fixoriumWallet.publicKey = data.publicKey;
+          fixoriumWallet.isConnected = true;
+          setWalletType('fixorium');
+          // Update parent component
+          if (window.updateWalletInfo) {
+            window.updateWalletInfo(data.publicKey, 'fixorium');
+          }
+        }
+      } catch (e) {}
+    }
+  };
 
   const fetchSolPrice = async () => {
     try {
@@ -77,9 +290,26 @@ export default function Buy({
     }
   };
 
+  const handleConnectFixorium = async () => {
+    setIsFixoriumConnecting(true);
+    try {
+      const connection = await fixoriumWallet.connect();
+      setWalletType('fixorium');
+      if (window.updateWalletInfo) {
+        window.updateWalletInfo(connection.publicKey, 'fixorium');
+      }
+      showToast('✅ Fixorium Wallet Connected!', 'Wallet connected successfully', 'success');
+    } catch (error) {
+      console.error('Fixorium connection error:', error);
+      showToast('❌ Connection Failed', 'Could not connect to Fixorium Wallet', 'error');
+    } finally {
+      setIsFixoriumConnecting(false);
+    }
+  };
+
   const handleSwapClick = () => {
-    if (!walletConnected) {
-      showToast('❌ Not Connected', 'Please connect your wallet using the header button', 'error');
+    if (!walletConnected && !fixoriumWallet.isConnected) {
+      showToast('❌ Not Connected', 'Please connect your wallet using the header button or Fixorium Wallet', 'error');
       return;
     }
 
@@ -89,7 +319,8 @@ export default function Buy({
       return;
     }
 
-    if (amount > solBalance) {
+    const balance = walletType === 'fixorium' ? solBalance : solBalance;
+    if (amount > balance) {
       showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
       return;
     }
@@ -148,7 +379,7 @@ export default function Buy({
 
   const getDflowSwap = async (quoteData) => {
     const data = await callDflowApi('swap', 'POST', {
-      userPublicKey: walletAddress,
+      userPublicKey: walletAddress || fixoriumWallet.publicKey,
       quoteResponse: quoteData,
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 150000,
@@ -171,13 +402,11 @@ export default function Buy({
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
-    if (!walletConnected) {
-      showToast('❌ Not Connected', 'Please connect your wallet', 'error');
-      return;
-    }
+    const currentWalletAddress = walletAddress || fixoriumWallet.publicKey;
+    const isFixorium = walletType === 'fixorium' || (!walletConnected && fixoriumWallet.isConnected);
 
-    if (!window.phantom?.solana) {
-      showToast('❌ Phantom Not Found', 'Phantom wallet is not installed', 'error');
+    if (!currentWalletAddress) {
+      showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
       return;
     }
 
@@ -187,18 +416,22 @@ export default function Buy({
       return;
     }
 
-    if (amount > solBalance) {
+    const balance = isFixorium ? solBalance : solBalance;
+    if (amount > balance) {
       showToast('❌ Insufficient Balance', 'Not enough SOL in wallet', 'error');
       return;
     }
 
     setIsSwapping(true);
     try {
-      const phantom = window.phantom.solana;
-      
+      // Check if Phantom is available (for Phantom users)
+      const hasPhantom = !!window.phantom?.solana;
+      const usePhantom = !isFixorium && hasPhantom && walletConnected;
+
       console.log('🔄 Starting swap with DFlow...');
       console.log('Amount:', amount);
-      console.log('Wallet:', walletAddress);
+      console.log('Wallet:', currentWalletAddress);
+      console.log('Wallet Type:', isFixorium ? 'Fixorium' : 'Phantom');
 
       // Convert SOL to lamports (1 SOL = 1e9 lamports)
       const amountInLamports = Math.floor(amount * 1e9);
@@ -209,7 +442,6 @@ export default function Buy({
         quoteData = await getDflowQuote(amountInLamports);
         console.log('📊 Quote received:', quoteData);
         
-        // Update output with actual quote
         if (quoteData && quoteData.outAmount) {
           const outAmount = parseFloat(quoteData.outAmount) / 1e6;
           setSwapOutput(outAmount.toFixed(4));
@@ -233,7 +465,7 @@ export default function Buy({
         throw new Error('No swap transaction received from DFlow');
       }
 
-      // 3. Deserialize the transaction using Uint8Array
+      // 3. Deserialize the transaction
       let transaction;
       try {
         const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
@@ -251,19 +483,32 @@ export default function Buy({
         throw new Error(`Failed to deserialize transaction: ${txError.message}`);
       }
 
-      console.log('📝 Requesting Phantom to sign and send transaction...');
-
-      // 4. Send transaction with Phantom
       let signature;
-      try {
-        const result = await phantom.signAndSendTransaction(transaction);
-        signature = result.signature;
-      } catch (phantomError) {
-        console.error('Phantom error:', phantomError);
-        if (phantomError.code === 4001 || phantomError.message?.includes('User rejected')) {
-          throw new Error('User rejected the transaction');
+
+      // 4. Send transaction with appropriate wallet
+      if (usePhantom) {
+        // Phantom Wallet
+        console.log('📝 Requesting Phantom to sign and send transaction...');
+        try {
+          const result = await window.phantom.solana.signAndSendTransaction(transaction);
+          signature = result.signature;
+        } catch (phantomError) {
+          console.error('Phantom error:', phantomError);
+          if (phantomError.code === 4001 || phantomError.message?.includes('User rejected')) {
+            throw new Error('User rejected the transaction');
+          }
+          throw new Error(`Failed to send transaction: ${phantomError.message}`);
         }
-        throw new Error(`Failed to send transaction: ${phantomError.message}`);
+      } else {
+        // Fixorium Wallet
+        console.log('📝 Requesting Fixorium Wallet to sign and send transaction...');
+        try {
+          const result = await fixoriumWallet.signAndSendTransaction(transaction);
+          signature = result.signature;
+        } catch (fixoriumError) {
+          console.error('Fixorium error:', fixoriumError);
+          throw new Error(`Failed to send transaction with Fixorium Wallet: ${fixoriumError.message}`);
+        }
       }
 
       console.log('✅ Transaction sent! Signature:', signature);
@@ -299,7 +544,6 @@ export default function Buy({
         throw new Error('Transaction confirmation timeout. Check explorer for status.');
       }
 
-      // 6. Get the actual output amount
       const outputAmount = swapData.outAmount 
         ? parseFloat(swapData.outAmount) / 1e6 
         : parseFloat(swapOutput);
@@ -314,7 +558,6 @@ export default function Buy({
       setSwapOutput('0.0');
       setUsdValue('~ $0.00');
 
-      // Refresh balances
       if (window.refreshBalances) {
         setTimeout(async () => {
           await window.refreshBalances();
@@ -327,7 +570,7 @@ export default function Buy({
       let errorMessage = error.message || 'Please try again';
       
       if (errorMessage.includes('User rejected')) {
-        showToast('❌ Transaction Rejected', 'You rejected the transaction in Phantom wallet', 'error');
+        showToast('❌ Transaction Rejected', 'You rejected the transaction in wallet', 'error');
       } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
         showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
       } else if (errorMessage.includes('timeout')) {
@@ -358,10 +601,10 @@ export default function Buy({
           Swap <span className="highlight">SOL → TREAT</span>
         </div>
 
-        {!walletConnected ? (
+        {!walletConnected && !fixoriumWallet.isConnected ? (
           <div style={{ 
             textAlign: 'center', 
-            padding: '3rem 1rem',
+            padding: '2rem 1rem',
             background: '#121010',
             borderRadius: '20px',
             border: '1px solid #1f1a18',
@@ -369,12 +612,87 @@ export default function Buy({
           }}>
             <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🔗</div>
             <h3 style={{ color: '#f0ece8', marginBottom: '0.5rem' }}>Wallet Not Connected</h3>
-            <p style={{ color: '#a89890', fontSize: '0.9rem' }}>
-              Please connect your Phantom wallet using the button in the top right corner
+            <p style={{ color: '#a89890', fontSize: '0.9rem', marginBottom: '1rem' }}>
+              Choose your wallet to connect
             </p>
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center', flexWrap: 'wrap' }}>
+              {/* Phantom Connect Button - Only show if Phantom is available or show connect option */}
+              <button
+                onClick={() => {
+                  if (window.phantom?.solana) {
+                    if (window.connectWallet) window.connectWallet();
+                  } else {
+                    window.open('https://phantom.app/', '_blank');
+                    showToast('ℹ️ Install Phantom', 'Please install Phantom wallet extension first', 'info');
+                  }
+                }}
+                style={{
+                  padding: '0.8rem 1.5rem',
+                  background: 'linear-gradient(135deg, #5344FF, #7a2be0)',
+                  border: 'none',
+                  borderRadius: '40px',
+                  color: '#fff',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <img 
+                  src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 397.7 311.7'%3E%3Cdefs%3E%3Cstyle%3E.a%7Bfill:%2314f195%7D%3C/style%3E%3C/defs%3E%3Cpath class='a' d='M64.6,237.9c2.4-2.4,5.7-3.8,9.2-3.8h317.4c5.8,0,8.7,7,4.6,11.1L372.6,271c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M64.6,3.8C67,1.4,70.3,0,73.8,0H391.2c5.8,0,8.7,7,4.6,11.1L372.6,40.6c-2.4,2.4-5.7,3.8-9.2,3.8H46c-5.8,0-8.7-7-4.6-11.1Z'/%3E%3Cpath class='a' d='M333.1,120.9c-2.4-2.4-5.7-3.8-9.2-3.8H6.5c-5.8,0-8.7,7-4.6,11.1l25.2,25.2c2.4,2.4,5.7,3.8,9.2,3.8H357.7c5.8,0,8.7-7,4.6-11.1Z'/%3E%3C/svg%3E"
+                  style={{ width: '20px', height: '16px' }}
+                  alt="Phantom"
+                />
+                Phantom
+              </button>
+              <button
+                onClick={handleConnectFixorium}
+                disabled={isFixoriumConnecting}
+                style={{
+                  padding: '0.8rem 1.5rem',
+                  background: isFixoriumConnecting ? '#2a2220' : 'linear-gradient(135deg, #00D4FF, #0099cc)',
+                  border: 'none',
+                  borderRadius: '40px',
+                  color: isFixoriumConnecting ? '#6b5f58' : '#0A0A0F',
+                  fontSize: '0.85rem',
+                  fontWeight: 700,
+                  cursor: isFixoriumConnecting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}
+              >
+                <span style={{ fontSize: '1.2rem' }}>🔷</span>
+                {isFixoriumConnecting ? 'CONNECTING...' : 'Fixorium Wallet'}
+              </button>
+            </div>
           </div>
         ) : (
           <>
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'space-between', 
+              alignItems: 'center',
+              padding: '0.5rem 1rem',
+              background: '#121010',
+              borderRadius: '12px',
+              marginBottom: '1rem',
+              border: '1px solid #1f1a18'
+            }}>
+              <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
+                Connected via: <strong style={{ color: '#f0ece8' }}>
+                  {walletType === 'fixorium' ? '🔷 Fixorium' : '🟣 Phantom'}
+                </strong>
+              </span>
+              <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
+                {walletAddress?.slice(0, 6)}...{walletAddress?.slice(-4)} 
+                {!walletAddress && fixoriumWallet.publicKey && 
+                  `${fixoriumWallet.publicKey.slice(0, 6)}...${fixoriumWallet.publicKey.slice(-4)}`}
+              </span>
+            </div>
+
             <div className="swap-box">
               <div className="swap-label">
                 <span>YOU PAY</span>

@@ -98,9 +98,10 @@ class FixoriumWalletConnector {
       params.append('appName', 'TREAT App');
       params.append('appUrl', window.location.origin);
       params.append('callbackUrl', window.location.origin + '/callback');
-      params.append('action', 'connect'); // Explicitly set action to connect
+      params.append('action', 'connect');
 
-      const webUrl = `https://wallet.fixorium.com.pk/sign?${params.toString()}`;
+      // 🔥 UPDATED: Use /approve instead of /sign
+      const webUrl = `https://wallet.fixorium.com.pk/approve?${params.toString()}`;
 
       console.log('🔗 Opening Fixorium Wallet for CONNECTION...');
 
@@ -115,7 +116,6 @@ class FixoriumWalletConnector {
         } else {
           // Fallback: redirect
           window.location.href = webUrl;
-          // Resolve after redirect
           setTimeout(() => {
             resolve({ publicKey: 'redirect' });
           }, 1000);
@@ -162,7 +162,7 @@ class FixoriumWalletConnector {
       params.append('appName', 'TREAT App');
       params.append('appUrl', window.location.origin);
       params.append('callbackUrl', window.location.origin + '/callback');
-      params.append('action', 'sign'); // Explicitly set action to sign
+      params.append('action', 'sign');
       
       if (transaction) {
         params.append('transaction', transaction);
@@ -171,7 +171,8 @@ class FixoriumWalletConnector {
         params.append('message', message);
       }
 
-      const webUrl = `https://wallet.fixorium.com.pk/sign?${params.toString()}`;
+      // 🔥 UPDATED: Use /approve instead of /sign
+      const webUrl = `https://wallet.fixorium.com.pk/approve?${params.toString()}`;
 
       console.log('✍️ Opening Fixorium Wallet for TRANSACTION SIGNING...');
 
@@ -223,7 +224,6 @@ let fixoriumWalletInstance = null;
 export function getFixoriumWallet() {
   if (!fixoriumWalletInstance) {
     fixoriumWalletInstance = new FixoriumWalletConnector();
-    // Expose globally for use in other components
     if (typeof window !== 'undefined') {
       window.fixoriumWalletConnector = fixoriumWalletInstance;
     }
@@ -251,7 +251,6 @@ export default function Header({
   useEffect(() => {
     connectorRef.current = getFixoriumWallet();
     
-    // Check if we have a stored connection
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
@@ -317,7 +316,6 @@ export default function Header({
       }
     } catch (error) {
       console.error('Fixorium connection error:', error);
-      // Don't show alert for user rejection
       if (!error.message.includes('rejected')) {
         alert('Failed to connect Fixorium Wallet: ' + error.message);
       }
@@ -339,7 +337,6 @@ export default function Header({
     setDropdownOpen(false);
   };
 
-  // Display address (use prop or local state)
   const displayAddress = walletAddress || localWalletAddress;
 
   return (

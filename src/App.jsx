@@ -1,4 +1,4 @@
-// src/App.jsx - Fixed connection handling
+// src/App.jsx - Updated connection handling
 import React, { useState, useEffect, useRef } from 'react';
 import { ConnectionProvider } from '@solana/wallet-adapter-react';
 import { WalletProvider } from '@solana/wallet-adapter-react';
@@ -96,7 +96,6 @@ class FixoriumWalletConnector {
         isConnected: this.isConnected,
         timestamp: Date.now()
       }));
-      // Also save in the format Header expects
       localStorage.setItem('fixorium_connection', JSON.stringify({
         publicKey: this.publicKey,
         connected: true,
@@ -259,31 +258,28 @@ function AppContent() {
     if (isFirstLoadRef.current) {
       isFirstLoadRef.current = false;
       
-      // Check if wallet is already connected
-      if (fixoriumWallet.isConnected && fixoriumWallet.publicKey) {
-        const publicKey = fixoriumWallet.publicKey;
-        console.log('✅ Restored wallet connection from storage:', publicKey);
-        setWalletAddress(publicKey);
-        setWalletConnected(true);
-        fetchBalances(publicKey);
-      }
-      
-      // Also check localStorage directly
+      // Check from localStorage directly
       const stored = localStorage.getItem('fixorium_connection');
-      if (stored && !fixoriumWallet.isConnected) {
+      if (stored) {
         try {
           const data = JSON.parse(stored);
           if (data.publicKey && data.connected) {
-            fixoriumWallet.publicKey = data.publicKey;
-            fixoriumWallet.isConnected = true;
+            console.log('✅ Restored connection from localStorage:', data.publicKey);
             setWalletAddress(data.publicKey);
             setWalletConnected(true);
+            fixoriumWallet.publicKey = data.publicKey;
+            fixoriumWallet.isConnected = true;
             fetchBalances(data.publicKey);
-            console.log('✅ Restored connection from localStorage:', data.publicKey);
           }
         } catch (e) {
           console.warn('Failed to restore connection:', e);
         }
+      } else if (fixoriumWallet.isConnected && fixoriumWallet.publicKey) {
+        const publicKey = fixoriumWallet.publicKey;
+        console.log('✅ Restored wallet connection from connector:', publicKey);
+        setWalletAddress(publicKey);
+        setWalletConnected(true);
+        fetchBalances(publicKey);
       }
     }
   }, []);
@@ -350,7 +346,7 @@ function AppContent() {
     window.refreshBalances = refreshBalances;
   }, [walletAddress]);
 
-  // 🔥 FIXED: Connect wallet function
+  // 🔥 FIXED: Connect wallet function - updates state properly
   const connectWallet = async () => {
     try {
       setIsLoading(true);
@@ -360,6 +356,7 @@ function AppContent() {
       
       if (connection.publicKey) {
         console.log('✅ Connected to Fixorium Wallet:', connection.publicKey);
+        // 🔥 Update state immediately
         setWalletAddress(connection.publicKey);
         setWalletConnected(true);
         await fetchBalances(connection.publicKey);
@@ -376,10 +373,11 @@ function AppContent() {
     }
   };
 
-  // 🔥 FIXED: Disconnect wallet function
+  // 🔥 FIXED: Disconnect wallet function - updates state properly
   const disconnectWallet = () => {
     console.log('🔌 Disconnecting wallet...');
     fixoriumWallet.disconnect();
+    // 🔥 Clear all state
     setWalletAddress('');
     setWalletConnected(false);
     setSolBalance(0);

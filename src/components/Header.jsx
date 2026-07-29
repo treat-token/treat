@@ -1,5 +1,6 @@
-// src/components/Header.jsx - Fixed with inline styles for modal
+// src/components/Header.jsx - Fixed with React Portal
 import React, { useState, useRef, useEffect } from 'react';
+import ReactDOM from 'react-dom';
 
 // Fixorium Wallet Connector - Complete Implementation
 class FixoriumWalletConnector {
@@ -218,6 +219,169 @@ export function getFixoriumWallet() {
   return fixoriumWalletInstance;
 }
 
+// Modal component using React Portal
+function WalletModal({ isOpen, onClose, onConnect, isConnecting }) {
+  if (!isOpen) return null;
+
+  return ReactDOM.createPortal(
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      background: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      zIndex: 99999,
+      backdropFilter: 'blur(8px)',
+      WebkitBackdropFilter: 'blur(8px)',
+    }} onClick={onClose}>
+      <div style={{
+        background: '#ffffff',
+        borderRadius: '24px',
+        padding: '2rem',
+        maxWidth: '420px',
+        width: '90%',
+        border: '1px solid #e5e7eb',
+        boxShadow: '0 30px 60px rgba(0, 0, 0, 0.15)',
+        position: 'relative',
+      }} onClick={(e) => e.stopPropagation()}>
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '0.5rem',
+        }}>
+          <h2 style={{
+            color: '#111827',
+            fontSize: '1.5rem',
+            margin: 0,
+            fontWeight: 700,
+          }}>Connect Wallet</h2>
+          <button style={{
+            background: 'none',
+            border: 'none',
+            color: '#6b7280',
+            fontSize: '1.5rem',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            borderRadius: '8px',
+            transition: 'all 0.3s ease',
+          }} onClick={onClose}>✕</button>
+        </div>
+        <p style={{
+          color: '#6b7280',
+          textAlign: 'center',
+          marginBottom: '1.5rem',
+          fontSize: '0.9rem',
+        }}>Connect your Fixorium Wallet</p>
+        
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.8rem',
+          marginBottom: '1.5rem',
+        }}>
+          <button 
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              padding: '1rem 1.2rem',
+              background: '#f9fafb',
+              border: '1px solid #e5e7eb',
+              borderRadius: '16px',
+              cursor: isConnecting ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
+              gap: '1rem',
+              width: '100%',
+              opacity: isConnecting ? 0.5 : 1,
+            }}
+            onClick={onConnect}
+            disabled={isConnecting}
+          >
+            <div style={{
+              width: '44px',
+              height: '44px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #00D4FF, #0099cc)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '22px',
+              flexShrink: 0,
+            }}>
+              <span>🔷</span>
+            </div>
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'flex-start',
+            }}>
+              <span style={{
+                color: '#111827',
+                fontWeight: 600,
+                fontSize: '0.95rem',
+              }}>Fixorium Wallet</span>
+              <span style={{
+                color: '#6b7280',
+                fontSize: '0.75rem',
+              }}>Secure Solana Wallet</span>
+            </div>
+            <span style={{
+              color: '#6b7280',
+              fontSize: '1.2rem',
+            }}>→</span>
+          </button>
+        </div>
+
+        {isConnecting && (
+          <div style={{
+            textAlign: 'center',
+            color: '#6b7280',
+            fontSize: '0.9rem',
+            marginBottom: '1rem',
+          }}>
+            <span style={{
+              display: 'inline-block',
+              width: '16px',
+              height: '16px',
+              border: '2px solid #e5e7eb',
+              borderTopColor: '#6366f1',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite',
+              verticalAlign: 'middle',
+              marginRight: '8px',
+            }}></span>
+            Connecting...
+          </div>
+        )}
+
+        <button 
+          style={{
+            width: '100%',
+            padding: '0.8rem',
+            background: '#f3f4f6',
+            border: '1px solid #e5e7eb',
+            borderRadius: '40px',
+            color: '#4b5563',
+            fontSize: '0.9rem',
+            fontWeight: 600,
+            cursor: 'pointer',
+            transition: 'all 0.3s ease',
+          }}
+          onClick={onClose}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function Header({ 
   activeSection, 
   onNavigate, 
@@ -414,182 +578,13 @@ export default function Header({
         </div>
       </header>
 
-      {/* Wallet Selection Modal - WITH INLINE STYLES */}
-      {showWalletModal && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'rgba(0, 0, 0, 0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          zIndex: 10000,
-          backdropFilter: 'blur(8px)',
-          WebkitBackdropFilter: 'blur(8px)',
-        }} onClick={() => setShowWalletModal(false)}>
-          <div style={{
-            background: '#ffffff',
-            borderRadius: '24px',
-            padding: '2rem',
-            maxWidth: '420px',
-            width: '90%',
-            border: '1px solid #e5e7eb',
-            boxShadow: '0 30px 60px rgba(0, 0, 0, 0.15)',
-            position: 'relative',
-          }} onClick={(e) => e.stopPropagation()}>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-              marginBottom: '0.5rem',
-            }}>
-              <h2 style={{
-                color: '#111827',
-                fontSize: '1.5rem',
-                margin: 0,
-                fontWeight: 700,
-              }}>Connect Wallet</h2>
-              <button style={{
-                background: 'none',
-                border: 'none',
-                color: '#6b7280',
-                fontSize: '1.5rem',
-                cursor: 'pointer',
-                padding: '4px 8px',
-                borderRadius: '8px',
-                transition: 'all 0.3s ease',
-              }} onClick={() => setShowWalletModal(false)}>✕</button>
-            </div>
-            <p style={{
-              color: '#6b7280',
-              textAlign: 'center',
-              marginBottom: '1.5rem',
-              fontSize: '0.9rem',
-            }}>Connect your Fixorium Wallet</p>
-            
-            <div style={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.8rem',
-              marginBottom: '1.5rem',
-            }}>
-              <button 
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  padding: '1rem 1.2rem',
-                  background: '#f9fafb',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '16px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease',
-                  gap: '1rem',
-                  width: '100%',
-                  opacity: isConnecting ? 0.5 : 1,
-                  cursor: isConnecting ? 'not-allowed' : 'pointer',
-                }}
-                onClick={handleConnectFixorium}
-                disabled={isConnecting}
-                onMouseEnter={(e) => {
-                  if (!isConnecting) {
-                    e.currentTarget.style.borderColor = '#6366f1';
-                    e.currentTarget.style.background = '#f3f4f6';
-                    e.currentTarget.style.transform = 'translateX(4px)';
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.borderColor = '#e5e7eb';
-                  e.currentTarget.style.background = '#f9fafb';
-                  e.currentTarget.style.transform = 'translateX(0)';
-                }}
-              >
-                <div style={{
-                  width: '44px',
-                  height: '44px',
-                  borderRadius: '12px',
-                  background: 'linear-gradient(135deg, #00D4FF, #0099cc)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontSize: '22px',
-                  flexShrink: 0,
-                }}>
-                  <span>🔷</span>
-                </div>
-                <div style={{
-                  flex: 1,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'flex-start',
-                }}>
-                  <span style={{
-                    color: '#111827',
-                    fontWeight: 600,
-                    fontSize: '0.95rem',
-                  }}>Fixorium Wallet</span>
-                  <span style={{
-                    color: '#6b7280',
-                    fontSize: '0.75rem',
-                  }}>Secure Solana Wallet</span>
-                </div>
-                <span style={{
-                  color: '#6b7280',
-                  fontSize: '1.2rem',
-                }}>→</span>
-              </button>
-            </div>
-
-            {isConnecting && (
-              <div style={{
-                textAlign: 'center',
-                color: '#6b7280',
-                fontSize: '0.9rem',
-                marginBottom: '1rem',
-              }}>
-                <span style={{
-                  display: 'inline-block',
-                  width: '16px',
-                  height: '16px',
-                  border: '2px solid #e5e7eb',
-                  borderTopColor: '#6366f1',
-                  borderRadius: '50%',
-                  animation: 'spin 0.8s linear infinite',
-                  verticalAlign: 'middle',
-                  marginRight: '8px',
-                }}></span>
-                Connecting...
-              </div>
-            )}
-
-            <button 
-              style={{
-                width: '100%',
-                padding: '0.8rem',
-                background: '#f3f4f6',
-                border: '1px solid #e5e7eb',
-                borderRadius: '40px',
-                color: '#4b5563',
-                fontSize: '0.9rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                transition: 'all 0.3s ease',
-              }}
-              onClick={() => setShowWalletModal(false)}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = '#e5e7eb';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = '#f3f4f6';
-              }}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Wallet Selection Modal - Using React Portal */}
+      <WalletModal 
+        isOpen={showWalletModal}
+        onClose={() => setShowWalletModal(false)}
+        onConnect={handleConnectFixorium}
+        isConnecting={isConnecting}
+      />
 
       <style>{`
         @keyframes spin {

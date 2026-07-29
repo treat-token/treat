@@ -23,6 +23,56 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
+  
+  // 🔥 Local connection state to track wallet status
+  const [localWalletConnected, setLocalWalletConnected] = useState(walletConnected);
+  const [localWalletAddress, setLocalWalletAddress] = useState(walletAddress);
+
+  // 🔥 Check connection from multiple sources
+  useEffect(() => {
+    const checkConnection = () => {
+      // 1. Check from props
+      if (walletConnected && walletAddress) {
+        setLocalWalletConnected(true);
+        setLocalWalletAddress(walletAddress);
+        console.log('✅ Buy: Connected via props');
+        return;
+      }
+      
+      // 2. Check from localStorage
+      try {
+        const stored = localStorage.getItem('fixorium_connection');
+        if (stored) {
+          const data = JSON.parse(stored);
+          if (data.publicKey && data.connected) {
+            setLocalWalletConnected(true);
+            setLocalWalletAddress(data.publicKey);
+            console.log('✅ Buy: Connected via localStorage');
+            return;
+          }
+        }
+      } catch (e) {
+        // Ignore
+      }
+      
+      // 3. Check from global connector
+      if (window.fixoriumWalletConnector?.isConnected && window.fixoriumWalletConnector?.publicKey) {
+        setLocalWalletConnected(true);
+        setLocalWalletAddress(window.fixoriumWalletConnector.publicKey);
+        console.log('✅ Buy: Connected via global connector');
+        return;
+      }
+      
+      // 4. Not connected
+      setLocalWalletConnected(false);
+      setLocalWalletAddress(null);
+      console.log('❌ Buy: Not connected');
+    };
+    
+    checkConnection();
+    
+    // Re-check when props change
+  }, [walletConnected, walletAddress]);
 
   useEffect(() => {
     fetchSolPrice();
@@ -76,7 +126,8 @@ export default function Buy({
   };
 
   const handleSwapClick = () => {
-    if (!walletConnected) {
+    // 🔥 Use local connection state instead of props
+    if (!localWalletConnected) {
       showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
       return;
     }
@@ -97,7 +148,7 @@ export default function Buy({
       output: swapOutput,
       rate: solPrice / treatPrice,
       walletType: 'Fixorium',
-      address: walletAddress
+      address: localWalletAddress || walletAddress
     });
     setShowConfirmDialog(true);
   };
@@ -134,7 +185,7 @@ export default function Buy({
     // Use the same dflowAPI service as Markets.tsx
     const swapData = await dflowAPI.getSwapTransaction({
       quoteResponse: quoteData,
-      userPublicKey: walletAddress,
+      userPublicKey: localWalletAddress || walletAddress,
       wrapAndUnwrapSol: true,
       dynamicComputeUnitLimit: true,
       prioritizationFeeLamports: 150000,
@@ -163,7 +214,8 @@ export default function Buy({
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
-    if (!walletConnected || !walletAddress) {
+    // 🔥 Use local connection state
+    if (!localWalletConnected || !localWalletAddress) {
       showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
       return;
     }
@@ -183,7 +235,7 @@ export default function Buy({
     try {
       console.log('🔄 Starting swap with DFlow...');
       console.log('  Amount:', amount);
-      console.log('  Wallet:', walletAddress);
+      console.log('  Wallet:', localWalletAddress);
 
       const amountInLamports = Math.floor(amount * 1e9);
       
@@ -334,7 +386,8 @@ export default function Buy({
           Swap <span className="highlight">SOL → TREAT</span>
         </div>
 
-        {!walletConnected ? (
+        {/* 🔥 Use local connection state instead of props */}
+        {!localWalletConnected ? (
           <div style={{ 
             textAlign: 'center', 
             padding: '3rem 1rem',
@@ -365,7 +418,7 @@ export default function Buy({
                 Connected via: <strong style={{ color: '#f0ece8' }}>🔷 Fixorium</strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
-                {walletAddress ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}` : 'No address'}
+                {localWalletAddress ? `${localWalletAddress.slice(0, 6)}...${localWalletAddress.slice(-6)}` : 'No address'}
               </span>
             </div>
 

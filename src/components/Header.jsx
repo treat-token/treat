@@ -1,4 +1,4 @@
-// src/components/Header.jsx - Fixed with React Portal
+// src/components/Header.jsx - Updated with proper connection handling
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
@@ -402,6 +402,7 @@ export default function Header({
   useEffect(() => {
     connectorRef.current = getFixoriumWallet();
     
+    // Check if we have a stored connection
     const stored = localStorage.getItem('fixorium_connection');
     if (stored) {
       try {
@@ -411,7 +412,9 @@ export default function Header({
           connector.publicKey = data.publicKey;
           connector.isConnected = true;
           setLocalWalletAddress(data.publicKey);
+          // 🔥 IMPORTANT: Call onConnect to update parent state
           if (onConnect && !walletConnected) {
+            console.log('🔄 Restoring connection and updating parent state');
             onConnect(data.publicKey);
           }
         }
@@ -421,7 +424,7 @@ export default function Header({
     }
   }, []);
 
-  // Update local wallet address when prop changes
+  // Update local wallet address when prop changes (from parent)
   useEffect(() => {
     if (walletAddress) {
       setLocalWalletAddress(walletAddress);
@@ -436,6 +439,7 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
+    // Check both prop and local state
     const isConnected = walletConnected || !!localWalletAddress;
     
     if (!isConnected) {
@@ -448,6 +452,7 @@ export default function Header({
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
     
+    // If already connected, just navigate
     if (walletConnected || localWalletAddress) {
       setShowWalletModal(false);
       handleNavigate('buy');
@@ -462,7 +467,9 @@ export default function Header({
       const connection = await connector.connect();
       if (connection.publicKey && connection.publicKey !== 'redirect') {
         setLocalWalletAddress(connection.publicKey);
+        // 🔥 IMPORTANT: Call onConnect to update parent state
         if (onConnect) {
+          console.log('🔄 Updating parent state with connection');
           onConnect(connection.publicKey);
         }
         setShowWalletModal(false);
@@ -485,12 +492,15 @@ export default function Header({
     const connector = connectorRef.current || getFixoriumWallet();
     connector.disconnect();
     setLocalWalletAddress(null);
+    // 🔥 IMPORTANT: Call onDisconnect to update parent state
     if (onDisconnect) {
+      console.log('🔄 Updating parent state with disconnection');
       onDisconnect();
     }
     setDropdownOpen(false);
   };
 
+  // Determine if connected (either from parent or local)
   const displayAddress = walletAddress || localWalletAddress;
   const isConnected = walletConnected || !!displayAddress;
 
@@ -578,7 +588,7 @@ export default function Header({
         </div>
       </header>
 
-      {/* Wallet Selection Modal - Using React Portal */}
+      {/* Wallet Selection Modal */}
       <WalletModal 
         isOpen={showWalletModal}
         onClose={() => setShowWalletModal(false)}

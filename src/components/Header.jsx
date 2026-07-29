@@ -1,4 +1,4 @@
-// src/components/Header.jsx - Clean version (no inline styles)
+// src/components/Header.jsx - Fixed wallet modal display
 import React, { useState, useRef, useEffect } from 'react';
 
 // Fixorium Wallet Connector - Complete Implementation
@@ -234,6 +234,7 @@ export default function Header({
   const isConnectingRef = useRef(false);
   const connectorRef = useRef(null);
 
+  // Initialize connector and check stored connection
   useEffect(() => {
     connectorRef.current = getFixoriumWallet();
     
@@ -256,6 +257,7 @@ export default function Header({
     }
   }, []);
 
+  // Update local wallet address when prop changes
   useEffect(() => {
     if (walletAddress) {
       setLocalWalletAddress(walletAddress);
@@ -269,16 +271,28 @@ export default function Header({
     setDropdownOpen(false);
   };
 
+  // 🔥 FIX: Always show modal if not connected, regardless of walletConnected prop
   const handleBuyTreat = () => {
-    if (!walletConnected && !localWalletAddress) {
+    console.log('🔍 handleBuyTreat called');
+    console.log('📊 walletConnected:', walletConnected);
+    console.log('📊 localWalletAddress:', localWalletAddress);
+    
+    // Check if wallet is connected (either via prop or local state)
+    const isConnected = walletConnected || !!localWalletAddress;
+    
+    if (!isConnected) {
+      console.log('🔓 Wallet not connected - showing modal');
       setShowWalletModal(true);
     } else {
+      console.log('✅ Wallet connected - navigating to buy');
       handleNavigate('buy');
     }
   };
 
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
+    
+    // If already connected, just navigate
     if (walletConnected || localWalletAddress) {
       setShowWalletModal(false);
       handleNavigate('buy');
@@ -322,7 +336,9 @@ export default function Header({
     setDropdownOpen(false);
   };
 
+  // Display address (use prop or local state)
   const displayAddress = walletAddress || localWalletAddress;
+  const isConnected = walletConnected || !!displayAddress;
 
   return (
     <>
@@ -341,7 +357,7 @@ export default function Header({
           </a>
 
           <div className="nav-right">
-            {(walletConnected || localWalletAddress) && displayAddress ? (
+            {isConnected && displayAddress ? (
               <div className="header-wallet-status">
                 <span className="status-dot connected"></span>
                 <span className="wallet-icon">🔷</span>

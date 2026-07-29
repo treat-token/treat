@@ -1,4 +1,4 @@
-// src/components/Header.jsx
+// src/components/Header.jsx - White Theme for Wallet Modal
 import React, { useState, useRef, useEffect } from 'react';
 
 // Fixorium Wallet Connector - Complete Implementation
@@ -15,7 +15,6 @@ class FixoriumWalletConnector {
 
   setupMessageListener() {
     window.addEventListener('message', (event) => {
-      // Allow messages from our wallet URL and local origin
       const walletUrl = 'https://wallet.fixorium.com.pk';
       if (event.origin !== walletUrl && event.origin !== window.location.origin) {
         return;
@@ -25,21 +24,18 @@ class FixoriumWalletConnector {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
         console.log('📩 Fixorium Wallet message:', data);
 
-        // Handle connection approval
         if (data.type === 'CONNECTION_APPROVED' || data.type === 'WALLET_CONNECTED') {
           const publicKey = data.payload?.publicKey || data.publicKey;
           if (publicKey) {
             this.publicKey = publicKey;
             this.isConnected = true;
             
-            // Save connection to localStorage
             localStorage.setItem('fixorium_connection', JSON.stringify({
               publicKey: publicKey,
               connected: true,
               timestamp: Date.now()
             }));
             
-            // Close popup after connection
             setTimeout(() => this.closePopup(), 500);
             
             if (this.onConnectCallback) {
@@ -48,7 +44,6 @@ class FixoriumWalletConnector {
           }
         }
 
-        // Handle transaction result
         if (data.type === 'TRANSACTION_RESULT') {
           console.log('✅ Transaction result received:', data);
           if (this.onTransactionCallback) {
@@ -57,7 +52,6 @@ class FixoriumWalletConnector {
           setTimeout(() => this.closePopup(), 500);
         }
 
-        // Handle rejection
         if (data.type === 'CONNECTION_REJECTED') {
           this.isConnected = false;
           this.closePopup();
@@ -66,7 +60,6 @@ class FixoriumWalletConnector {
           }
         }
       } catch (error) {
-        // Not JSON or error
         console.debug('Message parse error:', error);
       }
     });
@@ -100,7 +93,6 @@ class FixoriumWalletConnector {
       params.append('callbackUrl', window.location.origin + '/callback');
       params.append('action', 'connect');
 
-      // 🔥 UPDATED: Use /approve instead of /sign
       const webUrl = `https://wallet.fixorium.com.pk/approve?${params.toString()}`;
 
       console.log('🔗 Opening Fixorium Wallet for CONNECTION...');
@@ -114,7 +106,6 @@ class FixoriumWalletConnector {
         if (this.popupWindow) {
           this.popupWindow.focus();
         } else {
-          // Fallback: redirect
           window.location.href = webUrl;
           setTimeout(() => {
             resolve({ publicKey: 'redirect' });
@@ -124,7 +115,6 @@ class FixoriumWalletConnector {
         reject(new Error('Failed to open Fixorium Wallet: ' + e.message));
       }
 
-      // Timeout after 60 seconds
       setTimeout(() => {
         if (this.popupWindow && !this.popupWindow.closed) {
           this.popupWindow.close();
@@ -171,7 +161,6 @@ class FixoriumWalletConnector {
         params.append('message', message);
       }
 
-      // 🔥 UPDATED: Use /approve instead of /sign
       const webUrl = `https://wallet.fixorium.com.pk/approve?${params.toString()}`;
 
       console.log('✍️ Opening Fixorium Wallet for TRANSACTION SIGNING...');
@@ -185,7 +174,6 @@ class FixoriumWalletConnector {
         if (this.popupWindow) {
           this.popupWindow.focus();
         } else {
-          // Fallback: redirect
           window.location.href = webUrl;
           setTimeout(() => {
             reject(new Error('Redirected to wallet. Please approve in the wallet.'));
@@ -195,7 +183,6 @@ class FixoriumWalletConnector {
         reject(new Error('Failed to open Fixorium Wallet: ' + e.message));
       }
 
-      // Timeout after 120 seconds for transactions
       setTimeout(() => {
         if (this.popupWindow && !this.popupWindow.closed) {
           this.popupWindow.close();
@@ -423,7 +410,7 @@ export default function Header({
         </div>
       </header>
 
-      {/* Wallet Selection Modal - Only Fixorium */}
+      {/* Wallet Selection Modal - WHITE THEME */}
       {showWalletModal && (
         <div className="wallet-modal-overlay" onClick={() => setShowWalletModal(false)}>
           <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
@@ -468,28 +455,32 @@ export default function Header({
       )}
 
       <style>{`
+        /* ============================================================
+           WHITE THEME WALLET MODAL
+           ============================================================ */
         .wallet-modal-overlay {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
           bottom: 0;
-          background: rgba(0, 0, 0, 0.85);
+          background: rgba(255, 255, 255, 0.85);
+          backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 10000;
-          backdrop-filter: blur(8px);
+          padding: 16px;
         }
 
         .wallet-modal {
-          background: #1a1614;
+          background: #ffffff;
           border-radius: 24px;
           padding: 2rem;
           max-width: 420px;
           width: 90%;
-          border: 1px solid #2a2220;
-          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.9);
+          border: 1px solid #e5e7eb;
+          box-shadow: 0 30px 60px rgba(0, 0, 0, 0.15);
         }
 
         .wallet-modal-header {
@@ -500,15 +491,16 @@ export default function Header({
         }
 
         .wallet-modal-header h2 {
-          color: #f0ece8;
+          color: #111827;
           font-size: 1.5rem;
           margin: 0;
+          font-weight: 700;
         }
 
         .wallet-modal-close-btn {
           background: none;
           border: none;
-          color: #6b5f58;
+          color: #6b7280;
           font-size: 1.5rem;
           cursor: pointer;
           padding: 4px 8px;
@@ -517,12 +509,12 @@ export default function Header({
         }
 
         .wallet-modal-close-btn:hover {
-          color: #f0ece8;
-          background: #1f1a18;
+          color: #111827;
+          background: #f3f4f6;
         }
 
         .wallet-modal p {
-          color: #6b5f58;
+          color: #6b7280;
           text-align: center;
           margin-bottom: 1.5rem;
           font-size: 0.9rem;
@@ -539,8 +531,8 @@ export default function Header({
           display: flex;
           align-items: center;
           padding: 1rem 1.2rem;
-          background: #121010;
-          border: 1px solid #1f1a18;
+          background: #f9fafb;
+          border: 1px solid #e5e7eb;
           border-radius: 16px;
           cursor: pointer;
           transition: all 0.3s ease;
@@ -549,9 +541,10 @@ export default function Header({
         }
 
         .wallet-option:hover:not(:disabled) {
-          border-color: #2a2220;
-          background: #1f1a18;
+          border-color: #6366f1;
+          background: #f3f4f6;
           transform: translateX(4px);
+          box-shadow: 0 4px 12px rgba(99, 102, 241, 0.1);
         }
 
         .wallet-option:disabled {
@@ -582,28 +575,28 @@ export default function Header({
         }
 
         .wallet-option-name {
-          color: #f0ece8;
+          color: #111827;
           font-weight: 600;
           font-size: 0.95rem;
         }
 
         .wallet-option-desc {
-          color: #6b5f58;
+          color: #6b7280;
           font-size: 0.75rem;
         }
 
         .wallet-option-arrow {
-          color: #6b5f58;
+          color: #6b7280;
           font-size: 1.2rem;
         }
 
         .wallet-modal-cancel {
           width: 100%;
           padding: 0.8rem;
-          background: #1f1a18;
-          border: 1px solid #2a2220;
+          background: #f3f4f6;
+          border: 1px solid #e5e7eb;
           border-radius: 40px;
-          color: #a89890;
+          color: #4b5563;
           font-size: 0.9rem;
           font-weight: 600;
           cursor: pointer;
@@ -611,12 +604,12 @@ export default function Header({
         }
 
         .wallet-modal-cancel:hover {
-          background: #2a2220;
+          background: #e5e7eb;
         }
 
         .wallet-connecting {
           text-align: center;
-          color: #a89890;
+          color: #6b7280;
           font-size: 0.9rem;
           margin-bottom: 1rem;
         }
@@ -625,8 +618,8 @@ export default function Header({
           display: inline-block;
           width: 16px;
           height: 16px;
-          border: 2px solid #6b5f58;
-          border-top-color: #f0ece8;
+          border: 2px solid #e5e7eb;
+          border-top-color: #6366f1;
           border-radius: 50%;
           animation: spin 0.8s linear infinite;
           vertical-align: middle;
@@ -637,14 +630,17 @@ export default function Header({
           to { transform: rotate(360deg); }
         }
 
+        /* ============================================================
+           HEADER WALLET STATUS - WHITE THEME
+           ============================================================ */
         .header-wallet-status {
           display: flex;
           align-items: center;
           gap: 8px;
-          background: #121010;
+          background: #f9fafb;
           padding: 6px 12px 6px 8px;
           border-radius: 40px;
-          border: 1px solid #1f1a18;
+          border: 1px solid #e5e7eb;
           margin-right: 12px;
         }
 
@@ -652,12 +648,12 @@ export default function Header({
           width: 8px;
           height: 8px;
           border-radius: 50%;
-          background: #4a3f3a;
+          background: #d1d5db;
         }
 
         .status-dot.connected {
-          background: #14F195;
-          box-shadow: 0 0 8px rgba(20, 241, 149, 0.3);
+          background: #22c55e;
+          box-shadow: 0 0 8px rgba(34, 197, 94, 0.3);
         }
 
         .wallet-icon {
@@ -666,13 +662,13 @@ export default function Header({
 
         .wallet-name {
           font-size: 11px;
-          color: #a89890;
+          color: #6b7280;
           font-weight: 500;
         }
 
         .wallet-addr {
           font-size: 12px;
-          color: #f0ece8;
+          color: #111827;
           font-weight: 500;
           font-family: monospace;
         }
@@ -680,7 +676,7 @@ export default function Header({
         .disconnect-btn {
           background: transparent;
           border: none;
-          color: #6b5f58;
+          color: #6b7280;
           font-size: 10px;
           cursor: pointer;
           padding: 2px 8px;
@@ -689,10 +685,13 @@ export default function Header({
         }
 
         .disconnect-btn:hover {
-          color: #f87171;
-          background: rgba(248, 113, 113, 0.1);
+          color: #ef4444;
+          background: rgba(239, 68, 68, 0.1);
         }
 
+        /* ============================================================
+           RESPONSIVE
+           ============================================================ */
         @media (max-width: 768px) {
           .wallet-modal {
             padding: 1.5rem;

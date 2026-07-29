@@ -1,5 +1,235 @@
 // src/components/Header.jsx
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+
+// Fixorium Wallet Connector - Complete Implementation
+class FixoriumWalletConnector {
+  constructor() {
+    this.publicKey = null;
+    this.isConnected = false;
+    this.popupWindow = null;
+    this.onConnectCallback = null;
+    this.onTransactionCallback = null;
+    this.requestId = null;
+    this.setupMessageListener();
+  }
+
+  setupMessageListener() {
+    window.addEventListener('message', (event) => {
+      // Allow messages from our wallet URL and local origin
+      const walletUrl = 'https://wallet.fixorium.com.pk';
+      if (event.origin !== walletUrl && event.origin !== window.location.origin) {
+        return;
+      }
+
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        console.log('📩 Fixorium Wallet message:', data);
+
+        // Handle connection approval
+        if (data.type === 'CONNECTION_APPROVED' || data.type === 'WALLET_CONNECTED') {
+          const publicKey = data.payload?.publicKey || data.publicKey;
+          if (publicKey) {
+            this.publicKey = publicKey;
+            this.isConnected = true;
+            
+            // Save connection to localStorage
+            localStorage.setItem('fixorium_connection', JSON.stringify({
+              publicKey: publicKey,
+              connected: true,
+              timestamp: Date.now()
+            }));
+            
+            // Close popup after connection
+            setTimeout(() => this.closePopup(), 500);
+            
+            if (this.onConnectCallback) {
+              this.onConnectCallback(publicKey);
+            }
+          }
+        }
+
+        // Handle transaction result
+        if (data.type === 'TRANSACTION_RESULT') {
+          console.log('✅ Transaction result received:', data);
+          if (this.onTransactionCallback) {
+            this.onTransactionCallback(data.payload);
+          }
+          setTimeout(() => this.closePopup(), 500);
+        }
+
+        // Handle rejection
+        if (data.type === 'CONNECTION_REJECTED') {
+          this.isConnected = false;
+          this.closePopup();
+          if (this.onConnectCallback) {
+            this.onConnectCallback(null, true);
+          }
+        }
+      } catch (error) {
+        // Not JSON or error
+        console.debug('Message parse error:', error);
+      }
+    });
+  }
+
+  closePopup() {
+    if (this.popupWindow && !this.popupWindow.closed) {
+      this.popupWindow.close();
+      this.popupWindow = null;
+    }
+  }
+
+  async connect() {
+    return new Promise((resolve, reject) => {
+      const requestId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+      this.requestId = requestId;
+
+      this.onConnectCallback = (publicKey, rejected = false) => {
+        if (rejected) {
+          reject(new Error('Connection rejected'));
+        } else {
+          resolve({ publicKey });
+        }
+        this.onConnectCallback = null;
+      };
+
+      const params = new URLSearchParams();
+      params.append('requestId', requestId);
+      params.append('appName', 'TREAT App');
+      params.append('appUrl', window.location.origin);
+      params.append('callbackUrl', window.location.origin + '/callback');
+      params.append('action', 'connect'); // Explicitly set action to connect
+
+      const webUrl = `https://wallet.fixorium.com.pk/sign?${params.toString()}`;
+
+      console.log('🔗 Opening Fixorium Wallet for CONNECTION...');
+
+      try {
+        this.popupWindow = window.open(
+          webUrl,
+          'FixoriumWallet',
+          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
+        );
+        if (this.popupWindow) {
+          this.popupWindow.focus();
+        } else {
+          // Fallback: redirect
+          window.location.href = webUrl;
+          // Resolve after redirect
+          setTimeout(() => {
+            resolve({ publicKey: 'redirect' });
+          }, 1000);
+        }
+      } catch (e) {
+        reject(new Error('Failed to open Fixorium Wallet: ' + e.message));
+      }
+
+      // Timeout after 60 seconds
+      setTimeout(() => {
+        if (this.popupWindow && !this.popupWindow.closed) {
+          this.popupWindow.close();
+          this.popupWindow = null;
+        }
+        if (this.onConnectCallback) {
+          reject(new Error('Connection timeout'));
+          this.onConnectCallback = null;
+        }
+      }, 60000);
+    });
+  }
+
+  async signTransaction(transaction, message = null) {
+    return new Promise((resolve, reject) => {
+      if (!this.isConnected || !this.publicKey) {
+        reject(new Error('Wallet not connected'));
+        return;
+      }
+
+      const requestId = 'tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
+      this.requestId = requestId;
+
+      this.onTransactionCallback = (result) => {
+        if (result.success) {
+          resolve(result);
+        } else {
+          reject(new Error(result.error || 'Transaction failed'));
+        }
+        this.onTransactionCallback = null;
+      };
+
+      const params = new URLSearchParams();
+      params.append('requestId', requestId);
+      params.append('appName', 'TREAT App');
+      params.append('appUrl', window.location.origin);
+      params.append('callbackUrl', window.location.origin + '/callback');
+      params.append('action', 'sign'); // Explicitly set action to sign
+      
+      if (transaction) {
+        params.append('transaction', transaction);
+      }
+      if (message) {
+        params.append('message', message);
+      }
+
+      const webUrl = `https://wallet.fixorium.com.pk/sign?${params.toString()}`;
+
+      console.log('✍️ Opening Fixorium Wallet for TRANSACTION SIGNING...');
+
+      try {
+        this.popupWindow = window.open(
+          webUrl,
+          'FixoriumWallet',
+          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
+        );
+        if (this.popupWindow) {
+          this.popupWindow.focus();
+        } else {
+          // Fallback: redirect
+          window.location.href = webUrl;
+          setTimeout(() => {
+            reject(new Error('Redirected to wallet. Please approve in the wallet.'));
+          }, 1000);
+        }
+      } catch (e) {
+        reject(new Error('Failed to open Fixorium Wallet: ' + e.message));
+      }
+
+      // Timeout after 120 seconds for transactions
+      setTimeout(() => {
+        if (this.popupWindow && !this.popupWindow.closed) {
+          this.popupWindow.close();
+          this.popupWindow = null;
+        }
+        if (this.onTransactionCallback) {
+          reject(new Error('Transaction timeout'));
+          this.onTransactionCallback = null;
+        }
+      }, 120000);
+    });
+  }
+
+  disconnect() {
+    this.publicKey = null;
+    this.isConnected = false;
+    this.closePopup();
+    localStorage.removeItem('fixorium_connection');
+    console.log('🔌 Fixorium Wallet disconnected');
+  }
+}
+
+// Create singleton instance and expose globally
+let fixoriumWalletInstance = null;
+
+export function getFixoriumWallet() {
+  if (!fixoriumWalletInstance) {
+    fixoriumWalletInstance = new FixoriumWalletConnector();
+    // Expose globally for use in other components
+    if (typeof window !== 'undefined') {
+      window.fixoriumWalletConnector = fixoriumWalletInstance;
+    }
+  }
+  return fixoriumWalletInstance;
+}
 
 export default function Header({ 
   activeSection, 
@@ -13,7 +243,40 @@ export default function Header({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [localWalletAddress, setLocalWalletAddress] = useState(walletAddress);
   const isConnectingRef = useRef(false);
+  const connectorRef = useRef(null);
+
+  // Initialize connector and check stored connection
+  useEffect(() => {
+    connectorRef.current = getFixoriumWallet();
+    
+    // Check if we have a stored connection
+    const stored = localStorage.getItem('fixorium_connection');
+    if (stored) {
+      try {
+        const data = JSON.parse(stored);
+        if (data.publicKey && data.connected) {
+          const connector = connectorRef.current;
+          connector.publicKey = data.publicKey;
+          connector.isConnected = true;
+          setLocalWalletAddress(data.publicKey);
+          if (onConnect && !walletConnected) {
+            onConnect(data.publicKey);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to restore connection:', e);
+      }
+    }
+  }, []);
+
+  // Update local wallet address when prop changes
+  useEffect(() => {
+    if (walletAddress) {
+      setLocalWalletAddress(walletAddress);
+    }
+  }, [walletAddress]);
 
   const toggleDropdown = () => setDropdownOpen(!dropdownOpen);
 
@@ -23,7 +286,7 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
-    if (!walletConnected) {
+    if (!walletConnected && !localWalletAddress) {
       setShowWalletModal(true);
     } else {
       handleNavigate('buy');
@@ -32,7 +295,7 @@ export default function Header({
 
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
-    if (walletConnected) {
+    if (walletConnected || localWalletAddress) {
       setShowWalletModal(false);
       handleNavigate('buy');
       return;
@@ -42,19 +305,22 @@ export default function Header({
     setIsConnecting(true);
 
     try {
-      const fixoriumConnector = window.fixoriumWalletConnector;
-      if (!fixoriumConnector) {
-        throw new Error('Wallet connector not initialized');
+      const connector = connectorRef.current || getFixoriumWallet();
+      const connection = await connector.connect();
+      if (connection.publicKey && connection.publicKey !== 'redirect') {
+        setLocalWalletAddress(connection.publicKey);
+        if (onConnect) {
+          onConnect(connection.publicKey);
+        }
+        setShowWalletModal(false);
+        handleNavigate('buy');
       }
-      const connection = await fixoriumConnector.connect();
-      if (onConnect) {
-        onConnect(connection.publicKey);
-      }
-      setShowWalletModal(false);
-      handleNavigate('buy');
     } catch (error) {
       console.error('Fixorium connection error:', error);
-      alert('Failed to connect Fixorium Wallet');
+      // Don't show alert for user rejection
+      if (!error.message.includes('rejected')) {
+        alert('Failed to connect Fixorium Wallet: ' + error.message);
+      }
     } finally {
       setIsConnecting(false);
       setTimeout(() => {
@@ -64,13 +330,17 @@ export default function Header({
   };
 
   const handleDisconnect = () => {
-    // Only disconnect, DO NOT show wallet modal
+    const connector = connectorRef.current || getFixoriumWallet();
+    connector.disconnect();
+    setLocalWalletAddress(null);
     if (onDisconnect) {
       onDisconnect();
     }
-    // Close dropdown if open
     setDropdownOpen(false);
   };
+
+  // Display address (use prop or local state)
+  const displayAddress = walletAddress || localWalletAddress;
 
   return (
     <>
@@ -89,13 +359,13 @@ export default function Header({
           </a>
 
           <div className="nav-right">
-            {walletConnected && walletAddress ? (
+            {(walletConnected || localWalletAddress) && displayAddress ? (
               <div className="header-wallet-status">
                 <span className="status-dot connected"></span>
                 <span className="wallet-icon">🔷</span>
                 <span className="wallet-name">Fixorium</span>
                 <span className="wallet-addr">
-                  {`${walletAddress.slice(0, 6)}...${walletAddress.slice(-6)}`}
+                  {`${displayAddress.slice(0, 6)}...${displayAddress.slice(-6)}`}
                 </span>
                 <button className="disconnect-btn" onClick={handleDisconnect}>
                   Disconnect
@@ -235,6 +505,7 @@ export default function Header({
         .wallet-modal-header h2 {
           color: #f0ece8;
           font-size: 1.5rem;
+          margin: 0;
         }
 
         .wallet-modal-close-btn {
@@ -291,16 +562,19 @@ export default function Header({
           cursor: not-allowed;
         }
 
-        .fixorium-icon {
+        .wallet-option-icon {
           width: 44px;
           height: 44px;
           border-radius: 12px;
-          background: linear-gradient(135deg, #00D4FF, #0099cc);
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 22px;
           flex-shrink: 0;
+        }
+
+        .fixorium-icon {
+          background: linear-gradient(135deg, #00D4FF, #0099cc);
+          font-size: 22px;
         }
 
         .wallet-option-info {
@@ -364,10 +638,6 @@ export default function Header({
 
         @keyframes spin {
           to { transform: rotate(360deg); }
-        }
-
-        .connect-btn {
-          display: none !important;
         }
 
         .header-wallet-status {

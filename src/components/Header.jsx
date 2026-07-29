@@ -1,4 +1,4 @@
-// src/components/Header.jsx - Updated with proper connection handling
+// src/components/Header.jsx - Fixed to properly call onConnect
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 
@@ -469,7 +469,7 @@ export default function Header({
         setLocalWalletAddress(connection.publicKey);
         // 🔥 IMPORTANT: Call onConnect to update parent state
         if (onConnect) {
-          console.log('🔄 Updating parent state with connection');
+          console.log('🔄 Updating parent state with connection:', connection.publicKey);
           onConnect(connection.publicKey);
         }
         setShowWalletModal(false);

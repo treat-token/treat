@@ -1,223 +1,6 @@
-// src/components/Header.jsx - Fixed to properly call onConnect
+// src/components/Header.jsx - Use shared connector
 import React, { useState, useRef, useEffect } from 'react';
 import ReactDOM from 'react-dom';
-
-// Fixorium Wallet Connector - Complete Implementation
-class FixoriumWalletConnector {
-  constructor() {
-    this.publicKey = null;
-    this.isConnected = false;
-    this.popupWindow = null;
-    this.onConnectCallback = null;
-    this.onTransactionCallback = null;
-    this.requestId = null;
-    this.setupMessageListener();
-  }
-
-  setupMessageListener() {
-    window.addEventListener('message', (event) => {
-      const walletUrl = 'https://wallet.fixorium.com.pk';
-      if (event.origin !== walletUrl && event.origin !== window.location.origin) {
-        return;
-      }
-
-      try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        console.log('📩 Fixorium Wallet message:', data);
-
-        if (data.type === 'CONNECTION_APPROVED' || data.type === 'WALLET_CONNECTED') {
-          const publicKey = data.payload?.publicKey || data.publicKey;
-          if (publicKey) {
-            this.publicKey = publicKey;
-            this.isConnected = true;
-            
-            localStorage.setItem('fixorium_connection', JSON.stringify({
-              publicKey: publicKey,
-              connected: true,
-              timestamp: Date.now()
-            }));
-            
-            setTimeout(() => this.closePopup(), 500);
-            
-            if (this.onConnectCallback) {
-              this.onConnectCallback(publicKey);
-            }
-          }
-        }
-
-        if (data.type === 'TRANSACTION_RESULT') {
-          console.log('✅ Transaction result received:', data);
-          if (this.onTransactionCallback) {
-            this.onTransactionCallback(data.payload);
-          }
-          setTimeout(() => this.closePopup(), 500);
-        }
-
-        if (data.type === 'CONNECTION_REJECTED') {
-          this.isConnected = false;
-          this.closePopup();
-          if (this.onConnectCallback) {
-            this.onConnectCallback(null, true);
-          }
-        }
-      } catch (error) {
-        console.debug('Message parse error:', error);
-      }
-    });
-  }
-
-  closePopup() {
-    if (this.popupWindow && !this.popupWindow.closed) {
-      this.popupWindow.close();
-      this.popupWindow = null;
-    }
-  }
-
-  async connect() {
-    return new Promise((resolve, reject) => {
-      const requestId = 'conn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-      this.requestId = requestId;
-
-      this.onConnectCallback = (publicKey, rejected = false) => {
-        if (rejected) {
-          reject(new Error('Connection rejected'));
-        } else {
-          resolve({ publicKey });
-        }
-        this.onConnectCallback = null;
-      };
-
-      const params = new URLSearchParams();
-      params.append('requestId', requestId);
-      params.append('appName', 'TREAT App');
-      params.append('appUrl', window.location.origin);
-      params.append('callbackUrl', window.location.origin + '/callback');
-      params.append('action', 'connect');
-
-      const webUrl = `https://wallet.fixorium.com.pk/approve?${params.toString()}`;
-
-      console.log('🔗 Opening Fixorium Wallet for CONNECTION...');
-
-      try {
-        this.popupWindow = window.open(
-          webUrl,
-          'FixoriumWallet',
-          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
-        );
-        if (this.popupWindow) {
-          this.popupWindow.focus();
-        } else {
-          window.location.href = webUrl;
-          setTimeout(() => {
-            resolve({ publicKey: 'redirect' });
-          }, 1000);
-        }
-      } catch (e) {
-        reject(new Error('Failed to open Fixorium Wallet: ' + e.message));
-      }
-
-      setTimeout(() => {
-        if (this.popupWindow && !this.popupWindow.closed) {
-          this.popupWindow.close();
-          this.popupWindow = null;
-        }
-        if (this.onConnectCallback) {
-          reject(new Error('Connection timeout'));
-          this.onConnectCallback = null;
-        }
-      }, 60000);
-    });
-  }
-
-  async signTransaction(transaction, message = null) {
-    return new Promise((resolve, reject) => {
-      if (!this.isConnected || !this.publicKey) {
-        reject(new Error('Wallet not connected'));
-        return;
-      }
-
-      const requestId = 'tx_' + Date.now() + '_' + Math.random().toString(36).substring(2, 8);
-      this.requestId = requestId;
-
-      this.onTransactionCallback = (result) => {
-        if (result.success) {
-          resolve(result);
-        } else {
-          reject(new Error(result.error || 'Transaction failed'));
-        }
-        this.onTransactionCallback = null;
-      };
-
-      const params = new URLSearchParams();
-      params.append('requestId', requestId);
-      params.append('appName', 'TREAT App');
-      params.append('appUrl', window.location.origin);
-      params.append('callbackUrl', window.location.origin + '/callback');
-      params.append('action', 'sign');
-      
-      if (transaction) {
-        params.append('transaction', transaction);
-      }
-      if (message) {
-        params.append('message', message);
-      }
-
-      const webUrl = `https://wallet.fixorium.com.pk/approve?${params.toString()}`;
-
-      console.log('✍️ Opening Fixorium Wallet for TRANSACTION SIGNING...');
-
-      try {
-        this.popupWindow = window.open(
-          webUrl,
-          'FixoriumWallet',
-          'width=420,height=750,menubar=no,toolbar=no,location=no,resizable=yes,scrollbars=yes'
-        );
-        if (this.popupWindow) {
-          this.popupWindow.focus();
-        } else {
-          window.location.href = webUrl;
-          setTimeout(() => {
-            reject(new Error('Redirected to wallet. Please approve in the wallet.'));
-          }, 1000);
-        }
-      } catch (e) {
-        reject(new Error('Failed to open Fixorium Wallet: ' + e.message));
-      }
-
-      setTimeout(() => {
-        if (this.popupWindow && !this.popupWindow.closed) {
-          this.popupWindow.close();
-          this.popupWindow = null;
-        }
-        if (this.onTransactionCallback) {
-          reject(new Error('Transaction timeout'));
-          this.onTransactionCallback = null;
-        }
-      }, 120000);
-    });
-  }
-
-  disconnect() {
-    this.publicKey = null;
-    this.isConnected = false;
-    this.closePopup();
-    localStorage.removeItem('fixorium_connection');
-    console.log('🔌 Fixorium Wallet disconnected');
-  }
-}
-
-// Create singleton instance and expose globally
-let fixoriumWalletInstance = null;
-
-export function getFixoriumWallet() {
-  if (!fixoriumWalletInstance) {
-    fixoriumWalletInstance = new FixoriumWalletConnector();
-    if (typeof window !== 'undefined') {
-      window.fixoriumWalletConnector = fixoriumWalletInstance;
-    }
-  }
-  return fixoriumWalletInstance;
-}
 
 // Modal component using React Portal
 function WalletModal({ isOpen, onClose, onConnect, isConnecting }) {
@@ -396,35 +179,26 @@ export default function Header({
   const [isConnecting, setIsConnecting] = useState(false);
   const [localWalletAddress, setLocalWalletAddress] = useState(walletAddress);
   const isConnectingRef = useRef(false);
-  const connectorRef = useRef(null);
 
-  // Initialize connector and check stored connection
+  // 🔥 Use the shared connector from window
+  const getConnector = () => {
+    return window.fixoriumWalletConnector;
+  };
+
+  // Check for existing connection on mount
   useEffect(() => {
-    connectorRef.current = getFixoriumWallet();
-    
-    // Check if we have a stored connection
-    const stored = localStorage.getItem('fixorium_connection');
-    if (stored) {
-      try {
-        const data = JSON.parse(stored);
-        if (data.publicKey && data.connected) {
-          const connector = connectorRef.current;
-          connector.publicKey = data.publicKey;
-          connector.isConnected = true;
-          setLocalWalletAddress(data.publicKey);
-          // 🔥 IMPORTANT: Call onConnect to update parent state
-          if (onConnect && !walletConnected) {
-            console.log('🔄 Restoring connection and updating parent state');
-            onConnect(data.publicKey);
-          }
-        }
-      } catch (e) {
-        console.error('Failed to restore connection:', e);
+    const connector = getConnector();
+    if (connector && connector.isConnected && connector.publicKey) {
+      setLocalWalletAddress(connector.publicKey);
+      // Update parent state if needed
+      if (onConnect && !walletConnected) {
+        console.log('🔄 Restoring connection and updating parent state');
+        onConnect(connector.publicKey);
       }
     }
   }, []);
 
-  // Update local wallet address when prop changes (from parent)
+  // Update local wallet address when prop changes
   useEffect(() => {
     if (walletAddress) {
       setLocalWalletAddress(walletAddress);
@@ -439,7 +213,6 @@ export default function Header({
   };
 
   const handleBuyTreat = () => {
-    // Check both prop and local state
     const isConnected = walletConnected || !!localWalletAddress;
     
     if (!isConnected) {
@@ -452,7 +225,6 @@ export default function Header({
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
     
-    // If already connected, just navigate
     if (walletConnected || localWalletAddress) {
       setShowWalletModal(false);
       handleNavigate('buy');
@@ -463,15 +235,24 @@ export default function Header({
     setIsConnecting(true);
 
     try {
-      const connector = connectorRef.current || getFixoriumWallet();
+      const connector = getConnector();
+      if (!connector) {
+        throw new Error('Wallet connector not found. Please refresh the page.');
+      }
+
+      // 🔥 Use the connector's connect method
       const connection = await connector.connect();
-      if (connection.publicKey && connection.publicKey !== 'redirect') {
+      
+      if (connection.publicKey) {
+        console.log('✅ Connected via Header:', connection.publicKey);
         setLocalWalletAddress(connection.publicKey);
-        // 🔥 IMPORTANT: Call onConnect to update parent state
+        
+        // 🔥 Call onConnect to update parent state
         if (onConnect) {
           console.log('🔄 Updating parent state with connection:', connection.publicKey);
           onConnect(connection.publicKey);
         }
+        
         setShowWalletModal(false);
         handleNavigate('buy');
       }
@@ -489,10 +270,11 @@ export default function Header({
   };
 
   const handleDisconnect = () => {
-    const connector = connectorRef.current || getFixoriumWallet();
-    connector.disconnect();
+    const connector = getConnector();
+    if (connector) {
+      connector.disconnect();
+    }
     setLocalWalletAddress(null);
-    // 🔥 IMPORTANT: Call onDisconnect to update parent state
     if (onDisconnect) {
       console.log('🔄 Updating parent state with disconnection');
       onDisconnect();
@@ -500,7 +282,6 @@ export default function Header({
     setDropdownOpen(false);
   };
 
-  // Determine if connected (either from parent or local)
   const displayAddress = walletAddress || localWalletAddress;
   const isConnected = walletConnected || !!displayAddress;
 

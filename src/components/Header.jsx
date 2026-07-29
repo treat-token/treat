@@ -1,4 +1,4 @@
-// src/components/Header.jsx - Fixed wallet modal display
+// src/components/Header.jsx - Fixed with inline styles for modal
 import React, { useState, useRef, useEffect } from 'react';
 
 // Fixorium Wallet Connector - Complete Implementation
@@ -271,20 +271,12 @@ export default function Header({
     setDropdownOpen(false);
   };
 
-  // 🔥 FIX: Always show modal if not connected, regardless of walletConnected prop
   const handleBuyTreat = () => {
-    console.log('🔍 handleBuyTreat called');
-    console.log('📊 walletConnected:', walletConnected);
-    console.log('📊 localWalletAddress:', localWalletAddress);
-    
-    // Check if wallet is connected (either via prop or local state)
     const isConnected = walletConnected || !!localWalletAddress;
     
     if (!isConnected) {
-      console.log('🔓 Wallet not connected - showing modal');
       setShowWalletModal(true);
     } else {
-      console.log('✅ Wallet connected - navigating to buy');
       handleNavigate('buy');
     }
   };
@@ -292,7 +284,6 @@ export default function Header({
   const handleConnectFixorium = async () => {
     if (isConnectingRef.current) return;
     
-    // If already connected, just navigate
     if (walletConnected || localWalletAddress) {
       setShowWalletModal(false);
       handleNavigate('buy');
@@ -336,7 +327,6 @@ export default function Header({
     setDropdownOpen(false);
   };
 
-  // Display address (use prop or local state)
   const displayAddress = walletAddress || localWalletAddress;
   const isConnected = walletConnected || !!displayAddress;
 
@@ -424,49 +414,188 @@ export default function Header({
         </div>
       </header>
 
-      {/* Wallet Selection Modal */}
+      {/* Wallet Selection Modal - WITH INLINE STYLES */}
       {showWalletModal && (
-        <div className="wallet-modal-overlay" onClick={() => setShowWalletModal(false)}>
-          <div className="wallet-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="wallet-modal-header">
-              <h2>Connect Wallet</h2>
-              <button className="wallet-modal-close-btn" onClick={() => setShowWalletModal(false)}>✕</button>
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 10000,
+          backdropFilter: 'blur(8px)',
+          WebkitBackdropFilter: 'blur(8px)',
+        }} onClick={() => setShowWalletModal(false)}>
+          <div style={{
+            background: '#ffffff',
+            borderRadius: '24px',
+            padding: '2rem',
+            maxWidth: '420px',
+            width: '90%',
+            border: '1px solid #e5e7eb',
+            boxShadow: '0 30px 60px rgba(0, 0, 0, 0.15)',
+            position: 'relative',
+          }} onClick={(e) => e.stopPropagation()}>
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '0.5rem',
+            }}>
+              <h2 style={{
+                color: '#111827',
+                fontSize: '1.5rem',
+                margin: 0,
+                fontWeight: 700,
+              }}>Connect Wallet</h2>
+              <button style={{
+                background: 'none',
+                border: 'none',
+                color: '#6b7280',
+                fontSize: '1.5rem',
+                cursor: 'pointer',
+                padding: '4px 8px',
+                borderRadius: '8px',
+                transition: 'all 0.3s ease',
+              }} onClick={() => setShowWalletModal(false)}>✕</button>
             </div>
-            <p>Connect your Fixorium Wallet</p>
+            <p style={{
+              color: '#6b7280',
+              textAlign: 'center',
+              marginBottom: '1.5rem',
+              fontSize: '0.9rem',
+            }}>Connect your Fixorium Wallet</p>
             
-            <div className="wallet-options">
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '0.8rem',
+              marginBottom: '1.5rem',
+            }}>
               <button 
-                className="wallet-option fixorium"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '1rem 1.2rem',
+                  background: '#f9fafb',
+                  border: '1px solid #e5e7eb',
+                  borderRadius: '16px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease',
+                  gap: '1rem',
+                  width: '100%',
+                  opacity: isConnecting ? 0.5 : 1,
+                  cursor: isConnecting ? 'not-allowed' : 'pointer',
+                }}
                 onClick={handleConnectFixorium}
                 disabled={isConnecting}
+                onMouseEnter={(e) => {
+                  if (!isConnecting) {
+                    e.currentTarget.style.borderColor = '#6366f1';
+                    e.currentTarget.style.background = '#f3f4f6';
+                    e.currentTarget.style.transform = 'translateX(4px)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = '#e5e7eb';
+                  e.currentTarget.style.background = '#f9fafb';
+                  e.currentTarget.style.transform = 'translateX(0)';
+                }}
               >
-                <div className="wallet-option-icon fixorium-icon">
+                <div style={{
+                  width: '44px',
+                  height: '44px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, #00D4FF, #0099cc)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '22px',
+                  flexShrink: 0,
+                }}>
                   <span>🔷</span>
                 </div>
-                <div className="wallet-option-info">
-                  <span className="wallet-option-name">Fixorium Wallet</span>
-                  <span className="wallet-option-desc">Secure Solana Wallet</span>
+                <div style={{
+                  flex: 1,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'flex-start',
+                }}>
+                  <span style={{
+                    color: '#111827',
+                    fontWeight: 600,
+                    fontSize: '0.95rem',
+                  }}>Fixorium Wallet</span>
+                  <span style={{
+                    color: '#6b7280',
+                    fontSize: '0.75rem',
+                  }}>Secure Solana Wallet</span>
                 </div>
-                <span className="wallet-option-arrow">→</span>
+                <span style={{
+                  color: '#6b7280',
+                  fontSize: '1.2rem',
+                }}>→</span>
               </button>
             </div>
 
             {isConnecting && (
-              <div className="wallet-connecting">
-                <span className="spinner"></span>
+              <div style={{
+                textAlign: 'center',
+                color: '#6b7280',
+                fontSize: '0.9rem',
+                marginBottom: '1rem',
+              }}>
+                <span style={{
+                  display: 'inline-block',
+                  width: '16px',
+                  height: '16px',
+                  border: '2px solid #e5e7eb',
+                  borderTopColor: '#6366f1',
+                  borderRadius: '50%',
+                  animation: 'spin 0.8s linear infinite',
+                  verticalAlign: 'middle',
+                  marginRight: '8px',
+                }}></span>
                 Connecting...
               </div>
             )}
 
             <button 
-              className="wallet-modal-cancel"
+              style={{
+                width: '100%',
+                padding: '0.8rem',
+                background: '#f3f4f6',
+                border: '1px solid #e5e7eb',
+                borderRadius: '40px',
+                color: '#4b5563',
+                fontSize: '0.9rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                transition: 'all 0.3s ease',
+              }}
               onClick={() => setShowWalletModal(false)}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#e5e7eb';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#f3f4f6';
+              }}
             >
               Cancel
             </button>
           </div>
         </div>
       )}
+
+      <style>{`
+        @keyframes spin {
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
     </>
   );
 }

@@ -1,11 +1,21 @@
 // src/sections/Buy.jsx
 import React, { useState, useEffect, useRef } from 'react';
-import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
+import { PublicKey, Transaction, VersionedTransaction, SystemProgram } from '@solana/web3.js';
+import { 
+  TOKEN_PROGRAM_ID, 
+  ASSOCIATED_TOKEN_PROGRAM_ID, 
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction
+} from '@solana/spl-token';
 import { callRpc } from '../utils/rpc';
 import { dflowAPI } from '@/lib/services/dflow';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+// Token program constants
+const TOKEN_2022_PROGRAM_ID = new PublicKey('TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb');
+const TOKEN_PROGRAM_ID_PUB = new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA');
 
 export default function Buy({ 
   walletConnected, 
@@ -23,11 +33,10 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
+  const [ataCreationStatus, setAtaCreationStatus] = useState(null);
   
   // Refs for tracking swap state
   const swapInProgress = useRef(false);
-  const walletResponseReceived = useRef(false);
-  const walletResponseData = useRef(null);
   
   // Local connection state to track wallet status
   const [localWalletConnected, setLocalWalletConnected] = useState(walletConnected);
@@ -71,61 +80,6 @@ export default function Buy({
 
   useEffect(() => {
     fetchSolPrice();
-  }, []);
-
-  // Listen for wallet messages
-  useEffect(() => {
-    const handleWalletMessage = (event) => {
-      if (swapInProgress.current) {
-        const data = event.detail || event.data || event;
-        
-        if (data.type === 'TRANSACTION_RESULT' || data.type === 'transaction_result') {
-          walletResponseReceived.current = true;
-          walletResponseData.current = data;
-          
-          const payload = data.payload || data;
-          const signature = payload.signature || data.signature || data.requestId;
-          
-          if (signature) {
-            window.__pendingSwapSignature = signature;
-            window.__pendingSwapResult = data;
-            
-            // Check if wallet returned a signed transaction
-            if (payload.signedTransaction || payload.transaction) {
-              window.__pendingSignedTransaction = payload.signedTransaction || payload.transaction;
-            }
-          }
-        }
-      }
-    };
-
-    window.addEventListener('message', handleWalletMessage);
-    window.addEventListener('wallet-message', handleWalletMessage);
-    window.addEventListener('fixorium-wallet-message', handleWalletMessage);
-    
-    if (window.fixoriumWalletConnector) {
-      window.fixoriumWalletConnector.onMessage = (data) => {
-        if (data.type === 'TRANSACTION_RESULT') {
-          walletResponseReceived.current = true;
-          walletResponseData.current = data;
-          window.__pendingSwapSignature = data.requestId || data.signature;
-          window.__pendingSwapResult = data;
-          
-          if (data.payload?.signedTransaction || data.payload?.transaction) {
-            window.__pendingSignedTransaction = data.payload.signedTransaction || data.payload.transaction;
-          }
-        }
-      };
-    }
-
-    return () => {
-      window.removeEventListener('message', handleWalletMessage);
-      window.removeEventListener('wallet-message', handleWalletMessage);
-      window.removeEventListener('fixorium-wallet-message', handleWalletMessage);
-      if (window.fixoriumWalletConnector) {
-        window.fixoriumWalletConnector.onMessage = null;
-      }
-    };
   }, []);
 
   const fetchSolPrice = async () => {
@@ -314,60 +268,135 @@ export default function Buy({
     }
   };
 
-  // Helper to try to extract signed transaction from wallet
-  const tryExtractSignedTransaction = (result) => {
-    if (!result) return null;
-    
-    // Check all possible locations for a signed transaction
-    const locations = [
-      result.signedTransaction,
-      result.transaction,
-      result.signedTx,
-      result.tx,
-      result.payload?.signedTransaction,
-      result.payload?.transaction,
-      result.payload?.signedTx,
-      result.payload?.tx,
-      result.data?.signedTransaction,
-      result.data?.transaction,
-      window.__pendingSignedTransaction,
-      window.__pendingSwapResult?.payload?.signedTransaction,
-      window.__pendingSwapResult?.payload?.transaction,
-    ];
-    
-    for (const loc of locations) {
-      if (loc) {
-        // If it's already a Transaction or VersionedTransaction object
-        if (loc instanceof Transaction || loc instanceof VersionedTransaction) {
-          return loc;
-        }
-        // If it's a Uint8Array
-        if (loc instanceof Uint8Array) {
-          try {
-            return VersionedTransaction.deserialize(loc);
-          } catch (e) {
-            try {
-              return Transaction.from(loc);
-            } catch (e2) {}
-          }
-        }
-        // If it's a base64 string
-        if (typeof loc === 'string') {
-          try {
-            const bytes = base64ToUint8Array(loc);
-            try {
-              return VersionedTransaction.deserialize(bytes);
-            } catch (e) {
-              try {
-                return Transaction.from(bytes);
-              } catch (e2) {}
-            }
-          } catch (e) {}
-        }
+  // 🔥 NEW: Check if ATA exists and create if needed
+  const ensureTokenAccount = async (walletPubKey, mintPubKey, isToken2022 = true) => {
+    try {
+      console.log('🔍 Checking if ATA exists for token:', mintPubKey.toString());
+      
+      const tokenProgramId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID_PUB;
+      
+      // Get the associated token address
+      const ata = await getAssociatedTokenAddress(
+        mintPubKey,
+        walletPubKey,
+        false,
+        tokenProgramId
+      );
+      
+      console.log('📬 ATA address:', ata.toString());
+      
+      // Check if the ATA exists
+      const accountInfo = await callRpc('getAccountInfo', [ata.toString()]);
+      
+      if (accountInfo && accountInfo.value) {
+        console.log('✅ ATA already exists');
+        return { exists: true, ata: ata.toString() };
       }
+      
+      console.log('⚠️ ATA does not exist, need to create it');
+      return { exists: false, ata: ata.toString() };
+      
+    } catch (error) {
+      console.error('Error checking ATA:', error);
+      throw error;
     }
-    
-    return null;
+  };
+
+  // 🔥 NEW: Create ATA transaction
+  const createAtaTransaction = async (walletPubKey, mintPubKey, isToken2022 = true) => {
+    try {
+      console.log('🔧 Creating ATA for token:', mintPubKey.toString());
+      
+      const tokenProgramId = isToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID_PUB;
+      
+      const ata = await getAssociatedTokenAddress(
+        mintPubKey,
+        walletPubKey,
+        false,
+        tokenProgramId
+      );
+      
+      // Create the ATA creation instruction
+      const createAtaIx = createAssociatedTokenAccountInstruction(
+        walletPubKey,        // payer
+        ata,                 // ata
+        walletPubKey,        // owner
+        mintPubKey,          // mint
+        tokenProgramId       // token program
+      );
+      
+      // Get recent blockhash
+      const blockhashResponse = await callRpc('getLatestBlockhash', []);
+      const blockhash = blockhashResponse.value.blockhash;
+      
+      // Create transaction
+      const transaction = new Transaction();
+      transaction.add(createAtaIx);
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = walletPubKey;
+      
+      console.log('✅ ATA creation transaction created');
+      return { transaction, ata: ata.toString() };
+      
+    } catch (error) {
+      console.error('Error creating ATA transaction:', error);
+      throw error;
+    }
+  };
+
+  // 🔥 NEW: Execute ATA creation
+  const executeAtaCreation = async (ataTx, walletPubKey) => {
+    try {
+      console.log('📤 Sending ATA creation transaction...');
+      
+      // Get the wallet to sign
+      const fixoriumConnector = window.fixoriumWalletConnector;
+      if (!fixoriumConnector) {
+        throw new Error('Wallet connector not found');
+      }
+      
+      // Sign the transaction
+      const signedTx = await fixoriumConnector.signTransaction(ataTx);
+      
+      // Serialize and broadcast
+      const serializedTx = signedTx.serialize();
+      const serializedBase64 = base64FromBytes(serializedTx);
+      
+      const response = await fetch('/api/solana-rpc', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: Date.now(),
+          method: 'sendTransaction',
+          params: [
+            serializedBase64,
+            { 
+              encoding: 'base64',
+              skipPreflight: false,
+              preflightCommitment: 'confirmed'
+            }
+          ]
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.error) {
+        throw new Error(data.error.message || 'ATA creation failed');
+      }
+      
+      console.log('✅ ATA created successfully:', data.result);
+      
+      // Wait for confirmation
+      await waitForTransactionConfirmation(data.result);
+      
+      return data.result;
+      
+    } catch (error) {
+      console.error('ATA creation error:', error);
+      throw error;
+    }
   };
 
   const handleSwap = async () => {
@@ -391,20 +420,55 @@ export default function Buy({
 
     setIsSwapping(true);
     swapInProgress.current = true;
-    walletResponseReceived.current = false;
-    walletResponseData.current = null;
-    window.__pendingSwapSignature = null;
-    window.__pendingSwapResult = null;
-    window.__pendingSignedTransaction = null;
+    setAtaCreationStatus(null);
 
     try {
       console.log('🔄 Starting swap with DFlow...');
       console.log('  Amount:', amount);
       console.log('  Wallet:', localWalletAddress);
 
+      // 🔥 STEP 1: Check if TREAT ATA exists
+      console.log('🔍 Step 1: Checking TREAT ATA...');
+      const walletPubKey = new PublicKey(localWalletAddress);
+      const mintPubKey = new PublicKey(TREAT_MINT_ADDRESS);
+      
+      const ataCheck = await ensureTokenAccount(walletPubKey, mintPubKey, true);
+      
+      if (!ataCheck.exists) {
+        console.log('⚠️ TREAT ATA does not exist. Creating...');
+        setAtaCreationStatus('creating');
+        
+        // Create ATA transaction
+        const { transaction: ataTx, ata: ataAddress } = await createAtaTransaction(
+          walletPubKey,
+          mintPubKey,
+          true
+        );
+        
+        // Execute ATA creation
+        await executeAtaCreation(ataTx, walletPubKey);
+        console.log('✅ TREAT ATA created:', ataAddress);
+        setAtaCreationStatus('created');
+        
+        showToast(
+          '🔄 ATA Created',
+          `Token account created for TREAT. Continuing with swap...`,
+          'info'
+        );
+        
+        // Refresh balances after ATA creation
+        if (window.refreshBalances) {
+          await window.refreshBalances();
+        }
+      } else {
+        console.log('✅ TREAT ATA already exists:', ataCheck.ata);
+        setAtaCreationStatus('exists');
+      }
+
       const amountInLamports = Math.floor(amount * 1e9);
       
-      // 1. Get quote
+      // 2. Get quote
+      console.log('📊 Step 2: Getting quote from DFlow...');
       let quoteData;
       try {
         quoteData = await getDflowQuote(amountInLamports);
@@ -418,7 +482,8 @@ export default function Buy({
         throw new Error(`Could not get swap quote: ${quoteError.message}`);
       }
 
-      // 2. Get swap transaction
+      // 3. Get swap transaction
+      console.log('📝 Step 3: Getting swap transaction from DFlow...');
       let swapData;
       try {
         swapData = await getDflowSwap(quoteData);
@@ -431,7 +496,8 @@ export default function Buy({
         throw new Error('No swap transaction received from DFlow');
       }
 
-      // 3. Deserialize the transaction
+      // 4. Deserialize the transaction
+      console.log('📦 Step 4: Deserializing transaction...');
       let transaction;
       try {
         const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
@@ -449,13 +515,14 @@ export default function Buy({
         throw new Error(`Failed to deserialize transaction: ${txError.message}`);
       }
 
-      // 4. Check SOL balance for fees
+      // 5. Check SOL balance for fees
       const feeEstimate = 0.000005;
       if (solBalance < feeEstimate) {
         throw new Error(`Insufficient SOL for fees. Need ${feeEstimate} SOL, have ${solBalance}`);
       }
 
-      // 5. Get wallet to sign the transaction
+      // 6. Get wallet to sign the transaction
+      console.log('📤 Step 5: Sending to Fixorium Wallet...');
       const fixoriumConnector = window.fixoriumWalletConnector;
       if (!fixoriumConnector) {
         throw new Error('Fixorium wallet connector not found. Please reconnect your wallet.');
@@ -466,30 +533,21 @@ export default function Buy({
       let signedTransaction = null;
       let signature = null;
 
-      // 6. Sign the transaction with the wallet
+      // 7. Sign the transaction with the wallet
       try {
-        // Try signTransaction first (preferred for web wallets)
         if (typeof fixoriumConnector.signTransaction === 'function') {
           console.log('🔑 Using signTransaction method...');
           signedTransaction = await fixoriumConnector.signTransaction(transaction);
           console.log('✅ Transaction signed by wallet');
         } 
-        // Fallback to signAndSendTransaction
         else if (typeof fixoriumConnector.signAndSendTransaction === 'function') {
           console.log('🔑 Using signAndSendTransaction method...');
           
-          // Create a promise that resolves when we get the result
-          const signPromise = new Promise((resolve, reject) => {
+          const result = await new Promise((resolve, reject) => {
             const timeoutId = setTimeout(() => {
-              // Check if we have a pending result
-              if (window.__pendingSwapResult) {
-                resolve(window.__pendingSwapResult);
-                return;
-              }
               reject(new Error('Wallet signing timeout'));
             }, 60000);
 
-            // Call the wallet
             fixoriumConnector.signAndSendTransaction(transaction)
               .then(result => {
                 clearTimeout(timeoutId);
@@ -501,55 +559,41 @@ export default function Buy({
               });
           });
 
-          const result = await signPromise;
           console.log('📦 Wallet result:', result);
 
-          // Try to extract signed transaction from result
-          signedTransaction = tryExtractSignedTransaction(result);
-          
-          if (signedTransaction) {
-            console.log('✅ Extracted signed transaction from wallet result');
+          // Extract signed transaction from result
+          if (result.payload?.signedTransaction) {
+            signedTransaction = result.payload.signedTransaction;
+          } else if (result.signedTransaction) {
+            signedTransaction = result.signedTransaction;
           } else if (result.signature && isValidSolanaSignature(result.signature)) {
-            // Wallet broadcast it themselves with a real signature
-            console.log('✅ Wallet broadcast transaction', { signature: result.signature });
             signature = result.signature;
           } else if (result.signature && result.signature.startsWith('tx_')) {
-            // Wallet returned a fake signature - try to get the signed transaction from the wallet's internal state
-            console.log('⚠️ Wallet returned fake signature, trying to get signed transaction...');
+            // Wallet returned fake signature, but we already created the ATA
+            // Try to use the original transaction (already signed internally by wallet)
+            console.warn('⚠️ Wallet returned fake signature, but transaction may have been submitted');
             
-            // Wait a bit for the wallet to process
-            await new Promise(resolve => setTimeout(resolve, 2000));
+            // Check if the wallet broadcast it
+            showToast(
+              '⏳ Transaction Submitted',
+              `Swap submitted to Solana network. Check your wallet for status.`,
+              'info'
+            );
             
-            // Check if the wallet has a method to get the signed transaction
-            if (typeof fixoriumConnector.getSignedTransaction === 'function') {
-              signedTransaction = await fixoriumConnector.getSignedTransaction();
+            // Wait and check balances
+            if (window.refreshBalances) {
+              setTimeout(async () => {
+                console.log('🔄 Refreshing balances after swap...');
+                await window.refreshBalances();
+              }, 5000);
             }
             
-            // Check if the wallet stored it globally
-            if (!signedTransaction && window.__pendingSignedTransaction) {
-              signedTransaction = window.__pendingSignedTransaction;
-              console.log('✅ Found signed transaction in global state');
-            }
-            
-            // If we still don't have it, try to reconstruct from the transaction
-            if (!signedTransaction) {
-              console.log('⚠️ Could not get signed transaction, but wallet confirmed success');
-              // Show success and let the user check their wallet
-              showToast(
-                '✅ Swap Submitted! 🎉',
-                `Transaction sent to Solana network. Check your wallet for status.`,
-                'success'
-              );
-              setSwapInput('');
-              setSwapOutput('0.0');
-              setUsdValue('~ $0.00');
-              setIsSwapping(false);
-              swapInProgress.current = false;
-              if (window.refreshBalances) {
-                setTimeout(() => window.refreshBalances(), 10000);
-              }
-              return;
-            }
+            setSwapInput('');
+            setSwapOutput('0.0');
+            setUsdValue('~ $0.00');
+            setIsSwapping(false);
+            swapInProgress.current = false;
+            return;
           }
         } else {
           throw new Error('Wallet does not support signing transactions');
@@ -559,18 +603,14 @@ export default function Buy({
         throw signError;
       }
 
-      // 7. Broadcast the transaction if we have a signed transaction
+      // 8. Broadcast if we have a signed transaction
       if (signedTransaction) {
-        console.log('📡 Broadcasting signed transaction to blockchain...');
+        console.log('📡 Broadcasting signed transaction...');
         
         try {
-          // Serialize the signed transaction
           const serializedTx = signedTransaction.serialize();
           const serializedBase64 = base64FromBytes(serializedTx);
           
-          console.log('📤 Sending to RPC...', { txLength: serializedTx.length });
-          
-          // Send via RPC proxy
           const rpcResponse = await fetch('/api/solana-rpc', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -600,7 +640,7 @@ export default function Buy({
           console.log('✅ Transaction broadcast!', { signature });
           console.log('🔗 https://explorer.solana.com/tx/' + signature);
 
-          // 8. Wait for confirmation
+          // Wait for confirmation
           console.log('⏳ Waiting for confirmation...');
           const confirmationResult = await waitForTransactionConfirmation(signature);
           
@@ -640,7 +680,6 @@ export default function Buy({
           throw broadcastError;
         }
       } 
-      // If wallet broadcast it themselves with a real signature
       else if (signature && isValidSolanaSignature(signature)) {
         console.log('✅ Wallet broadcast transaction', { signature });
         showToast(
@@ -651,25 +690,6 @@ export default function Buy({
         setSwapInput('');
         setSwapOutput('0.0');
         setUsdValue('~ $0.00');
-      } 
-      // If wallet returned a fake tx_ signature, handle it
-      else if (signature && signature.startsWith('tx_')) {
-        console.warn('⚠️ Wallet returned fake signature, transaction may have been submitted');
-        showToast(
-          '✅ Swap Submitted! 🎉',
-          `Transaction sent to Solana network. Check your wallet for status.`,
-          'success'
-        );
-        setSwapInput('');
-        setSwapOutput('0.0');
-        setUsdValue('~ $0.00');
-        
-        if (window.refreshBalances) {
-          setTimeout(async () => {
-            console.log('🔄 Refreshing balances...');
-            await window.refreshBalances();
-          }, 10000);
-        }
       } 
       else {
         throw new Error('No signed transaction or valid signature received from wallet');
@@ -682,45 +702,20 @@ export default function Buy({
       
       if (errorMessage.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in wallet', 'error');
-      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
-        showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
+      } else if (errorMessage.includes('ATA') || errorMessage.includes('token account')) {
+        showToast('❌ ATA Creation Failed', 'Could not create token account. Please try again.', 'error');
+      } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity')) {
+        showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity. Try a smaller amount.', 'error');
       } else if (errorMessage.includes('timeout') || errorMessage.includes('Timed out')) {
-        if (window.__pendingSwapResult?.payload?.success === true) {
-          showToast(
-            '✅ Swap Submitted!',
-            `Transaction sent to network. Check your wallet for status.`,
-            'success'
-          );
-          setSwapInput('');
-          setSwapOutput('0.0');
-          setUsdValue('~ $0.00');
-          setIsSwapping(false);
-          swapInProgress.current = false;
-          if (window.refreshBalances) {
-            setTimeout(() => window.refreshBalances(), 10000);
-          }
-          return;
-        }
         showToast('⏳ Timeout', 'Transaction took too long. Check your wallet for status.', 'info');
-      } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
-        showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
-      } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
-        showToast('❌ API Key Error', 'DFlow API key is missing or invalid.', 'error');
       } else if (errorMessage.includes('insufficient balance')) {
         showToast('❌ Insufficient Balance', 'Not enough SOL for this swap including fees', 'error');
-      } else if (errorMessage.includes('connector not found')) {
-        showToast('❌ Wallet Error', 'Please reconnect your Fixorium wallet and try again.', 'error');
-      } else if (errorMessage.includes('Failed to deserialize')) {
-        showToast('❌ Transaction Error', 'Failed to process transaction. Please try again.', 'error');
       } else {
         showToast('❌ Swap Failed', errorMessage, 'error');
       }
     } finally {
       setIsSwapping(false);
       swapInProgress.current = false;
-      window.__pendingSwapSignature = null;
-      window.__pendingSwapResult = null;
-      window.__pendingSignedTransaction = null;
     }
   };
 
@@ -764,12 +759,49 @@ export default function Buy({
               border: '1px solid #1f1a18'
             }}>
               <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
-                <strong style={{ color: '#f0ece8' }}>FIXORIUM</strong>
+                 <strong style={{ color: '#f0ece8' }}>FIXORIUM</strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
                 {localWalletAddress ? `${localWalletAddress.slice(0, 6)}...${localWalletAddress.slice(-6)}` : 'No address'}
               </span>
             </div>
+
+            {/* ATA Status Display */}
+            {ataCreationStatus === 'creating' && (
+              <div style={{
+                background: '#1a1a0a',
+                border: '1px solid #f0e000',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ color: '#f0e000', fontSize: '16px' }}>⏳</span>
+                <span style={{ color: '#f0e000', fontSize: '11px' }}>
+                  Creating TREAT token account...
+                </span>
+              </div>
+            )}
+
+            {ataCreationStatus === 'created' && (
+              <div style={{
+                background: '#0a1a0a',
+                border: '1px solid #14F195',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                marginBottom: '1rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <span style={{ color: '#14F195', fontSize: '16px' }}>✅</span>
+                <span style={{ color: '#14F195', fontSize: '11px' }}>
+                  TREAT token account created!
+                </span>
+              </div>
+            )}
 
             {solBalance < 0.0005 && (
               <div style={{
@@ -855,7 +887,7 @@ export default function Buy({
               {isSwapping ? (
                 <>
                   <span className="spinner"></span>
-                  SWAPPING...
+                  {ataCreationStatus === 'creating' ? 'CREATING ATA...' : 'SWAPPING...'}
                 </>
               ) : (
                 'SWAP NOW'

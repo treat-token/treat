@@ -2,10 +2,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { callRpc } from '../utils/rpc';
-import { dflowAPI } from '@/lib/services/dflow';
+import { dflowAPI, TOKEN_2022_PROGRAM_ID, isToken2022 } from '@/lib/services/dflow';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
+
+// Check if TREAT is Token-2022
+const TREAT_IS_TOKEN_2022 = isToken2022(TREAT_MINT_ADDRESS);
 
 export default function Buy({ 
   walletConnected, 

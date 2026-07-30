@@ -1,9 +1,26 @@
 // src/lib/services/dflow.js
 // ============================================================
-// DFLOW API SERVICE - Same as used in Markets.tsx
+// DFLOW API SERVICE - Updated for Token-2022 Support
 // ============================================================
 
 const DFLOW_API_BASE = '/api/dflow';
+
+// Token program constants
+const TOKEN_PROGRAM_ID = 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA';
+const TOKEN_2022_PROGRAM_ID = 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb';
+
+// Known Token-2022 tokens
+const TOKEN_2022_MINTS = {
+  '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump': true, // TREAT
+  // Add other Token-2022 mints here
+};
+
+/**
+ * Check if a token mint is Token-2022
+ */
+const isToken2022 = (mintAddress) => {
+  return !!TOKEN_2022_MINTS[mintAddress];
+};
 
 export const dflowAPI = {
   /**
@@ -20,6 +37,13 @@ export const dflowAPI = {
     console.log('  To:', outputMint);
     console.log('  Amount:', amount);
 
+    // Check if either token is Token-2022
+    const inputIsToken2022 = isToken2022(inputMint);
+    const outputIsToken2022 = isToken2022(outputMint);
+    
+    console.log('  Input is Token-2022:', inputIsToken2022);
+    console.log('  Output is Token-2022:', outputIsToken2022);
+
     const response = await fetch(DFLOW_API_BASE, {
       method: 'POST',
       headers: {
@@ -33,6 +57,9 @@ export const dflowAPI = {
           outputMint,
           amount: amount.toString(),
           slippageBps: slippageBps.toString(),
+          // 🔥 Add Token-2022 hints
+          inputTokenProgram: inputIsToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
+          outputTokenProgram: outputIsToken2022 ? TOKEN_2022_PROGRAM_ID : TOKEN_PROGRAM_ID,
         }
       })
     });
@@ -49,7 +76,7 @@ export const dflowAPI = {
   },
 
   /**
-   * Get swap transaction from DFlow
+   * Get swap transaction from DFlow with Token-2022 support
    * @param {Object} params - Swap parameters
    * @param {Object} params.quoteResponse - Quote response from getQuote
    * @param {string} params.userPublicKey - User's wallet public key
@@ -58,11 +85,61 @@ export const dflowAPI = {
    * @param {number} params.prioritizationFeeLamports - Priority fee in lamports
    * @param {number} params.slippageBps - Slippage in basis points
    * @param {boolean} params.dynamicSlippage - Use dynamic slippage
+   * @param {string} params.outputMint - Output token mint (for Token-2022 detection)
+   * @param {string} params.tokenProgram - Force specific token program
    * @returns {Promise<Object>} Swap transaction response
    */
   async getSwapTransaction(params) {
     console.log('📝 Getting swap transaction from DFlow...');
     console.log('  User:', params.userPublicKey);
+
+    // Detect if output is Token-2022
+    const outputMint = params.outputMint || params.quoteResponse?.outputMint;
+    const outputIsToken2022 = isToken2022(outputMint);
+    
+    // Also check input if provided
+    const inputMint = params.inputMint || params.quoteResponse?.inputMint;
+    const inputIsToken2022 = isToken2022(inputMint);
+
+    console.log('  Output is Token-2022:', outputIsToken2022);
+    console.log('  Input is Token-2022:', inputIsToken2022);
+
+    // Build request data with Token-2022 support
+    const requestData = {
+      quoteResponse: params.quoteResponse,
+      userPublicKey: params.userPublicKey,
+      wrapAndUnwrapSol: params.wrapAndUnwrapSol ?? true,
+      dynamicComputeUnitLimit: params.dynamicComputeUnitLimit ?? true,
+      prioritizationFeeLamports: params.prioritizationFeeLamports ?? 150000,
+      slippageBps: params.slippageBps ?? 50,
+      dynamicSlippage: params.dynamicSlippage ?? true,
+    };
+
+    // 🔥 CRITICAL: Add Token-2022 support if needed
+    if (outputIsToken2022 || inputIsToken2022) {
+      // DFlow uses 'tokenProgram' to specify which token program to use
+      // For Token-2022, we need to specify it explicitly
+      requestData.tokenProgram = TOKEN_2022_PROGRAM_ID;
+      requestData.destinationTokenProgram = TOKEN_2022_PROGRAM_ID;
+      
+      // Also add the mint info for the backend to use
+      if (outputIsToken2022) {
+        requestData.outputMint = outputMint;
+      }
+      if (inputIsToken2022) {
+        requestData.inputMint = inputMint;
+      }
+      
+      console.log('🔧 Using Token-2022 program:', TOKEN_2022_PROGRAM_ID);
+    }
+
+    // Override with explicit tokenProgram if provided
+    if (params.tokenProgram) {
+      requestData.tokenProgram = params.tokenProgram;
+      requestData.destinationTokenProgram = params.tokenProgram;
+    }
+
+    console.log('📤 Request data:', JSON.stringify(requestData, null, 2));
 
     const response = await fetch(DFLOW_API_BASE, {
       method: 'POST',
@@ -72,15 +149,7 @@ export const dflowAPI = {
       body: JSON.stringify({
         endpoint: 'swap',
         method: 'POST',
-        data: {
-          quoteResponse: params.quoteResponse,
-          userPublicKey: params.userPublicKey,
-          wrapAndUnwrapSol: params.wrapAndUnwrapSol ?? true,
-          dynamicComputeUnitLimit: params.dynamicComputeUnitLimit ?? true,
-          prioritizationFeeLamports: params.prioritizationFeeLamports ?? 150000,
-          slippageBps: params.slippageBps ?? 50,
-          dynamicSlippage: params.dynamicSlippage ?? true,
-        }
+        data: requestData,
       })
     });
 
@@ -96,7 +165,7 @@ export const dflowAPI = {
   },
 
   /**
-   * Execute swap with retry logic
+   * Execute swap with retry logic (Token-2022 compatible)
    * @param {Object} params - Swap parameters
    * @param {string} params.fromToken - Token to swap from
    * @param {string} params.toToken - Token to swap to
@@ -136,7 +205,7 @@ export const dflowAPI = {
           }
         }
 
-        // 3. Get swap transaction
+        // 3. Get swap transaction with Token-2022 support
         const swapData = await this.getSwapTransaction({
           quoteResponse: quote,
           userPublicKey,
@@ -145,6 +214,8 @@ export const dflowAPI = {
           prioritizationFeeLamports: priorityFee + (retryCount * 5000),
           slippageBps: slippageBps + (retryCount * 10),
           dynamicSlippage: true,
+          outputMint: toToken, // Pass output mint for Token-2022 detection
+          inputMint: fromToken, // Pass input mint for Token-2022 detection
         });
 
         return {
@@ -176,3 +247,6 @@ export const dflowAPI = {
     throw lastError || new Error('Swap failed after retries');
   }
 };
+
+// Export token program constants for use in other files
+export { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, isToken2022, TOKEN_2022_MINTS };

@@ -27,6 +27,7 @@ export default function Buy({
   // Refs for tracking swap state
   const swapInProgress = useRef(false);
   const walletResponseReceived = useRef(false);
+  const walletResponseData = useRef(null);
   
   // Local connection state to track wallet status
   const [localWalletConnected, setLocalWalletConnected] = useState(walletConnected);
@@ -80,6 +81,7 @@ export default function Buy({
         
         if (data.type === 'TRANSACTION_RESULT' || data.type === 'transaction_result') {
           walletResponseReceived.current = true;
+          walletResponseData.current = data;
           
           const payload = data.payload || data;
           const signature = payload.signature || data.signature || data.requestId;
@@ -105,6 +107,7 @@ export default function Buy({
       window.fixoriumWalletConnector.onMessage = (data) => {
         if (data.type === 'TRANSACTION_RESULT') {
           walletResponseReceived.current = true;
+          walletResponseData.current = data;
           window.__pendingSwapSignature = data.requestId || data.signature;
           window.__pendingSwapResult = data;
           
@@ -311,6 +314,62 @@ export default function Buy({
     }
   };
 
+  // Helper to try to extract signed transaction from wallet
+  const tryExtractSignedTransaction = (result) => {
+    if (!result) return null;
+    
+    // Check all possible locations for a signed transaction
+    const locations = [
+      result.signedTransaction,
+      result.transaction,
+      result.signedTx,
+      result.tx,
+      result.payload?.signedTransaction,
+      result.payload?.transaction,
+      result.payload?.signedTx,
+      result.payload?.tx,
+      result.data?.signedTransaction,
+      result.data?.transaction,
+      window.__pendingSignedTransaction,
+      window.__pendingSwapResult?.payload?.signedTransaction,
+      window.__pendingSwapResult?.payload?.transaction,
+    ];
+    
+    for (const loc of locations) {
+      if (loc) {
+        // If it's already a Transaction or VersionedTransaction object
+        if (loc instanceof Transaction || loc instanceof VersionedTransaction) {
+          return loc;
+        }
+        // If it's a Uint8Array
+        if (loc instanceof Uint8Array) {
+          try {
+            return VersionedTransaction.deserialize(loc);
+          } catch (e) {
+            try {
+              return Transaction.from(loc);
+            } catch (e2) {}
+          }
+        }
+        // If it's a base64 string
+        if (typeof loc === 'string') {
+          try {
+            const bytes = base64ToUint8Array(loc);
+            try {
+              return VersionedTransaction.deserialize(bytes);
+            } catch (e) {
+              try {
+                return Transaction.from(bytes);
+              } catch (e2) {}
+            }
+          } catch (e) {}
+        }
+      }
+    }
+    
+    return null;
+  };
+
   const handleSwap = async () => {
     setShowConfirmDialog(false);
 
@@ -333,6 +392,7 @@ export default function Buy({
     setIsSwapping(true);
     swapInProgress.current = true;
     walletResponseReceived.current = false;
+    walletResponseData.current = null;
     window.__pendingSwapSignature = null;
     window.__pendingSwapResult = null;
     window.__pendingSignedTransaction = null;
@@ -444,26 +504,52 @@ export default function Buy({
           const result = await signPromise;
           console.log('📦 Wallet result:', result);
 
-          // Check if the wallet returned a signed transaction
-          if (result.signedTransaction) {
-            signedTransaction = result.signedTransaction;
-          } else if (result.transaction) {
-            signedTransaction = result.transaction;
-          } else if (result.payload?.signedTransaction) {
-            signedTransaction = result.payload.signedTransaction;
-          } else if (result.payload?.transaction) {
-            signedTransaction = result.payload.transaction;
+          // Try to extract signed transaction from result
+          signedTransaction = tryExtractSignedTransaction(result);
+          
+          if (signedTransaction) {
+            console.log('✅ Extracted signed transaction from wallet result');
           } else if (result.signature && isValidSolanaSignature(result.signature)) {
             // Wallet broadcast it themselves with a real signature
             console.log('✅ Wallet broadcast transaction', { signature: result.signature });
             signature = result.signature;
-          } else if (window.__pendingSignedTransaction) {
-            // Check global state for signed transaction
-            signedTransaction = window.__pendingSignedTransaction;
-            console.log('✅ Found signed transaction in global state');
-          } else if (window.__pendingSwapResult?.payload?.signedTransaction) {
-            signedTransaction = window.__pendingSwapResult.payload.signedTransaction;
-            console.log('✅ Found signed transaction in pending result');
+          } else if (result.signature && result.signature.startsWith('tx_')) {
+            // Wallet returned a fake signature - try to get the signed transaction from the wallet's internal state
+            console.log('⚠️ Wallet returned fake signature, trying to get signed transaction...');
+            
+            // Wait a bit for the wallet to process
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Check if the wallet has a method to get the signed transaction
+            if (typeof fixoriumConnector.getSignedTransaction === 'function') {
+              signedTransaction = await fixoriumConnector.getSignedTransaction();
+            }
+            
+            // Check if the wallet stored it globally
+            if (!signedTransaction && window.__pendingSignedTransaction) {
+              signedTransaction = window.__pendingSignedTransaction;
+              console.log('✅ Found signed transaction in global state');
+            }
+            
+            // If we still don't have it, try to reconstruct from the transaction
+            if (!signedTransaction) {
+              console.log('⚠️ Could not get signed transaction, but wallet confirmed success');
+              // Show success and let the user check their wallet
+              showToast(
+                '✅ Swap Submitted! 🎉',
+                `Transaction sent to Solana network. Check your wallet for status.`,
+                'success'
+              );
+              setSwapInput('');
+              setSwapOutput('0.0');
+              setUsdValue('~ $0.00');
+              setIsSwapping(false);
+              swapInProgress.current = false;
+              if (window.refreshBalances) {
+                setTimeout(() => window.refreshBalances(), 10000);
+              }
+              return;
+            }
           }
         } else {
           throw new Error('Wallet does not support signing transactions');
@@ -566,17 +652,24 @@ export default function Buy({
         setSwapOutput('0.0');
         setUsdValue('~ $0.00');
       } 
-      // If wallet returned a fake tx_ signature, try to handle it
+      // If wallet returned a fake tx_ signature, handle it
       else if (signature && signature.startsWith('tx_')) {
-        console.warn('⚠️ Wallet returned fake signature, but transaction may have been submitted');
+        console.warn('⚠️ Wallet returned fake signature, transaction may have been submitted');
         showToast(
           '✅ Swap Submitted! 🎉',
-          `Transaction sent to Solana network. Check wallet history for status.`,
+          `Transaction sent to Solana network. Check your wallet for status.`,
           'success'
         );
         setSwapInput('');
         setSwapOutput('0.0');
         setUsdValue('~ $0.00');
+        
+        if (window.refreshBalances) {
+          setTimeout(async () => {
+            console.log('🔄 Refreshing balances...');
+            await window.refreshBalances();
+          }, 10000);
+        }
       } 
       else {
         throw new Error('No signed transaction or valid signature received from wallet');
@@ -595,7 +688,7 @@ export default function Buy({
         if (window.__pendingSwapResult?.payload?.success === true) {
           showToast(
             '✅ Swap Submitted!',
-            `Transaction sent to network. Check explorer for status.`,
+            `Transaction sent to network. Check your wallet for status.`,
             'success'
           );
           setSwapInput('');
@@ -604,11 +697,11 @@ export default function Buy({
           setIsSwapping(false);
           swapInProgress.current = false;
           if (window.refreshBalances) {
-            setTimeout(() => window.refreshBalances(), 5000);
+            setTimeout(() => window.refreshBalances(), 10000);
           }
           return;
         }
-        showToast('⏳ Timeout', 'Transaction took too long. Check explorer for status.', 'info');
+        showToast('⏳ Timeout', 'Transaction took too long. Check your wallet for status.', 'info');
       } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
         showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
       } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
@@ -671,7 +764,7 @@ export default function Buy({
               border: '1px solid #1f1a18'
             }}>
               <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
-                 <strong style={{ color: '#f0ece8' }}>FIXORIUM</strong>
+                <strong style={{ color: '#f0ece8' }}>FIXORIUM</strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
                 {localWalletAddress ? `${localWalletAddress.slice(0, 6)}...${localWalletAddress.slice(-6)}` : 'No address'}

@@ -2,13 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { PublicKey, Transaction, VersionedTransaction } from '@solana/web3.js';
 import { callRpc } from '../utils/rpc';
-import { dflowAPI, TOKEN_2022_PROGRAM_ID, isToken2022 } from '@/lib/services/dflow';
+import { dflowAPI } from '@/lib/services/dflow';
 
 const TREAT_MINT_ADDRESS = '3tj92yVKduEBypdVh8nNViDgrbTaxpoSWAnzVdenpump';
 const SOL_MINT = 'So11111111111111111111111111111111111111112';
-
-// Check if TREAT is Token-2022
-const TREAT_IS_TOKEN_2022 = isToken2022(TREAT_MINT_ADDRESS);
 
 export default function Buy({ 
   walletConnected, 
@@ -26,34 +23,21 @@ export default function Buy({
   const [solPrice, setSolPrice] = useState(150);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
   const [confirmData, setConfirmData] = useState(null);
-  const [debugLogs, setDebugLogs] = useState([]);
   
   // Refs for tracking swap state
   const swapInProgress = useRef(false);
   const walletResponseReceived = useRef(false);
-  const walletResultRef = useRef(null);
   
   // Local connection state to track wallet status
   const [localWalletConnected, setLocalWalletConnected] = useState(walletConnected);
   const [localWalletAddress, setLocalWalletAddress] = useState(walletAddress);
 
-  // Add debug log function
-  const addDebugLog = (message, data = null) => {
-    const timestamp = new Date().toISOString();
-    const log = { timestamp, message, data };
-    setDebugLogs(prev => [...prev, log]);
-    console.log(`[DEBUG ${timestamp}] ${message}`, data || '');
-  };
-
   // Check connection from multiple sources
   useEffect(() => {
     const checkConnection = () => {
-      addDebugLog('Checking wallet connection...');
-      
       if (walletConnected && walletAddress) {
         setLocalWalletConnected(true);
         setLocalWalletAddress(walletAddress);
-        addDebugLog('✅ Connected via props', { walletAddress });
         return;
       }
       
@@ -64,7 +48,6 @@ export default function Buy({
           if (data.publicKey && data.connected) {
             setLocalWalletConnected(true);
             setLocalWalletAddress(data.publicKey);
-            addDebugLog('✅ Connected via localStorage', { publicKey: data.publicKey });
             return;
           }
         }
@@ -75,15 +58,11 @@ export default function Buy({
       if (window.fixoriumWalletConnector?.isConnected && window.fixoriumWalletConnector?.publicKey) {
         setLocalWalletConnected(true);
         setLocalWalletAddress(window.fixoriumWalletConnector.publicKey);
-        addDebugLog('✅ Connected via global connector', { 
-          publicKey: window.fixoriumWalletConnector.publicKey 
-        });
         return;
       }
       
       setLocalWalletConnected(false);
       setLocalWalletAddress(null);
-      addDebugLog('❌ Not connected');
     };
     
     checkConnection();
@@ -95,45 +74,43 @@ export default function Buy({
 
   // Listen for wallet messages
   useEffect(() => {
-    addDebugLog('Setting up wallet message listeners...');
-    
     const handleWalletMessage = (event) => {
-      addDebugLog('📩 Wallet message received', { event: event.data });
-      
       if (swapInProgress.current) {
         const data = event.detail || event.data || event;
         
         if (data.type === 'TRANSACTION_RESULT' || data.type === 'transaction_result') {
-          addDebugLog('✅ Transaction result received in Buy component', data);
           walletResponseReceived.current = true;
-          walletResultRef.current = data;
           
           const payload = data.payload || data;
           const signature = payload.signature || data.signature || data.requestId;
           
           if (signature) {
-            addDebugLog('✅ Signature received via message listener', { signature });
             window.__pendingSwapSignature = signature;
             window.__pendingSwapResult = data;
+            
+            // Check if wallet returned a signed transaction
+            if (payload.signedTransaction || payload.transaction) {
+              window.__pendingSignedTransaction = payload.signedTransaction || payload.transaction;
+            }
           }
         }
       }
     };
 
-    // Add event listeners for wallet messages
     window.addEventListener('message', handleWalletMessage);
     window.addEventListener('wallet-message', handleWalletMessage);
     window.addEventListener('fixorium-wallet-message', handleWalletMessage);
     
-    // Also check for the wallet connector's response
     if (window.fixoriumWalletConnector) {
       window.fixoriumWalletConnector.onMessage = (data) => {
-        addDebugLog('📩 Wallet connector onMessage triggered', data);
         if (data.type === 'TRANSACTION_RESULT') {
           walletResponseReceived.current = true;
-          walletResultRef.current = data;
           window.__pendingSwapSignature = data.requestId || data.signature;
           window.__pendingSwapResult = data;
+          
+          if (data.payload?.signedTransaction || data.payload?.transaction) {
+            window.__pendingSignedTransaction = data.payload.signedTransaction || data.payload.transaction;
+          }
         }
       };
     }
@@ -157,7 +134,6 @@ export default function Buy({
           const pair = data.pairs.find(p => p.baseToken?.symbol === 'SOL');
           if (pair?.priceUsd) {
             setSolPrice(parseFloat(pair.priceUsd));
-            addDebugLog('✅ SOL price fetched', { price: pair.priceUsd });
             return;
           }
         }
@@ -224,67 +200,45 @@ export default function Buy({
   };
 
   const getDflowQuote = async (amountInLamports) => {
-    addDebugLog('📊 Fetching quote from DFlow...', {
-      from: SOL_MINT,
-      to: TREAT_MINT_ADDRESS,
-      amount: amountInLamports
-    });
+    console.log('📊 Fetching quote from DFlow...');
+    console.log('  From (SOL):', SOL_MINT);
+    console.log('  To (TREAT):', TREAT_MINT_ADDRESS);
+    console.log('  Amount:', amountInLamports);
 
-    try {
-      const quote = await dflowAPI.getQuote(
-        SOL_MINT,
-        TREAT_MINT_ADDRESS,
-        amountInLamports,
-        50 // slippageBps
-      );
+    const quote = await dflowAPI.getQuote(
+      SOL_MINT,
+      TREAT_MINT_ADDRESS,
+      amountInLamports,
+      50
+    );
 
-      if (!quote || !quote.outAmount) {
-        addDebugLog('❌ No quote received from DFlow', quote);
-        throw new Error('No quote received from DFlow');
-      }
-
-      addDebugLog('✅ Quote received', {
-        inAmount: quote.inAmount,
-        outAmount: quote.outAmount,
-        priceImpact: quote.priceImpactPct
-      });
-      
-      return quote;
-    } catch (error) {
-      addDebugLog('❌ Quote error', { error: error.message });
-      throw error;
+    if (!quote || !quote.outAmount) {
+      throw new Error('No quote received from DFlow');
     }
+
+    console.log('✅ Quote received:', quote);
+    return quote;
   };
 
   const getDflowSwap = async (quoteData) => {
-    addDebugLog('📝 Getting swap transaction from DFlow...');
+    console.log('📝 Getting swap transaction from DFlow...');
 
-    try {
-      const swapData = await dflowAPI.getSwapTransaction({
-        quoteResponse: quoteData,
-        userPublicKey: localWalletAddress || walletAddress,
-        wrapAndUnwrapSol: true,
-        dynamicComputeUnitLimit: true,
-        prioritizationFeeLamports: 150000,
-        slippageBps: 50,
-        dynamicSlippage: true,
-      });
+    const swapData = await dflowAPI.getSwapTransaction({
+      quoteResponse: quoteData,
+      userPublicKey: localWalletAddress || walletAddress,
+      wrapAndUnwrapSol: true,
+      dynamicComputeUnitLimit: true,
+      prioritizationFeeLamports: 150000,
+      slippageBps: 50,
+      dynamicSlippage: true,
+    });
 
-      if (!swapData || !swapData.swapTransaction) {
-        addDebugLog('❌ No swap transaction received from DFlow', swapData);
-        throw new Error('No swap transaction received from DFlow');
-      }
-
-      addDebugLog('✅ Swap transaction received', {
-        hasTransaction: !!swapData.swapTransaction,
-        txLength: swapData.swapTransaction?.length
-      });
-      
-      return swapData;
-    } catch (error) {
-      addDebugLog('❌ Swap transaction error', { error: error.message });
-      throw error;
+    if (!swapData || !swapData.swapTransaction) {
+      throw new Error('No swap transaction received from DFlow');
     }
+
+    console.log('✅ Swap transaction received');
+    return swapData;
   };
 
   const base64ToUint8Array = (base64) => {
@@ -296,87 +250,16 @@ export default function Buy({
     return bytes;
   };
 
-  // Custom signAndSend with timeout and message handling
-  const signAndSendWithFallback = (connector, transaction) => {
-    return new Promise((resolve, reject) => {
-      addDebugLog('⏳ Starting signAndSend with fallback...');
-      
-      // Set up timeout - 60 seconds
-      const timeoutId = setTimeout(() => {
-        addDebugLog('⏰ Timeout reached, checking for pending result...');
-        
-        // Check if we received a response via message listener
-        if (walletResponseReceived.current && window.__pendingSwapResult) {
-          addDebugLog('✅ Using pending result from message listener');
-          const result = window.__pendingSwapResult;
-          window.__pendingSwapResult = null;
-          walletResponseReceived.current = false;
-          resolve(result);
-          return;
-        }
-        
-        // Check if we have a stored signature
-        if (window.__pendingSwapSignature) {
-          addDebugLog('✅ Using stored signature from message listener');
-          const signature = window.__pendingSwapSignature;
-          window.__pendingSwapSignature = null;
-          resolve({ signature, success: true });
-          return;
-        }
-        
-        addDebugLog('❌ No pending result found, rejecting');
-        reject(new Error('Transaction signing timeout'));
-      }, 60000);
-
-      // Call the connector's signAndSendTransaction
-      addDebugLog('📤 Calling connector.signAndSendTransaction...');
-      connector.signAndSendTransaction(transaction)
-        .then(result => {
-          clearTimeout(timeoutId);
-          addDebugLog('✅ signAndSendTransaction resolved', result);
-          resolve(result);
-        })
-        .catch(error => {
-          clearTimeout(timeoutId);
-          addDebugLog('❌ signAndSendTransaction rejected', { error: error.message });
-          
-          // Check if we have a pending result from message listener
-          if (walletResponseReceived.current && window.__pendingSwapResult) {
-            addDebugLog('✅ Using pending result after error');
-            const result = window.__pendingSwapResult;
-            window.__pendingSwapResult = null;
-            walletResponseReceived.current = false;
-            resolve(result);
-            return;
-          }
-          reject(error);
-        });
-    });
+  const base64FromBytes = (bytes) => {
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, chunk);
+    }
+    return btoa(binary);
   };
 
-  // Check if wallet transaction was successful based on response
-  const isTransactionSuccessful = (result) => {
-    if (!result) return false;
-    
-    // Check payload for success flag
-    if (result.payload && result.payload.success === true) {
-      return true;
-    }
-    
-    // Check direct success flag
-    if (result.success === true) {
-      return true;
-    }
-    
-    // Check if it has a signature (even if fake)
-    if (result.signature || result.requestId || result.txid) {
-      return true;
-    }
-    
-    return false;
-  };
-
-  // Check if signature is a real Solana signature (not fake tx_)
   const isValidSolanaSignature = (signature) => {
     if (!signature || typeof signature !== 'string') return false;
     if (signature.startsWith('tx_')) return false;
@@ -384,9 +267,8 @@ export default function Buy({
     return /^[123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz]+$/.test(signature);
   };
 
-  // Helper function for confirmation
   const waitForTransactionConfirmation = async (signature, maxAttempts = 25) => {
-    addDebugLog(`⏳ Waiting for transaction ${signature} to confirm...`);
+    console.log(`⏳ Waiting for transaction ${signature} to confirm...`);
     
     let confirmed = false;
     let attempts = 0;
@@ -401,7 +283,7 @@ export default function Buy({
           
           if (txStatus.confirmationStatus === 'confirmed' || txStatus.confirmationStatus === 'finalized') {
             confirmed = true;
-            addDebugLog('✅ Transaction confirmed', txStatus);
+            console.log('✅ Transaction confirmed:', txStatus);
             return { confirmed: true, status: txStatus };
           } else if (txStatus.err) {
             throw new Error(`Transaction failed: ${JSON.stringify(txStatus.err)}`);
@@ -409,7 +291,7 @@ export default function Buy({
         }
       } catch (e) {
         lastError = e.message;
-        addDebugLog(`Confirmation check attempt ${attempts + 1}/${maxAttempts}`, { error: e.message });
+        console.warn(`Confirmation check attempt ${attempts + 1}/${maxAttempts}:`, e.message);
       }
 
       if (!confirmed) {
@@ -420,7 +302,7 @@ export default function Buy({
     }
 
     if (!confirmed) {
-      addDebugLog('⚠️ Transaction confirmation timeout', { attempts, lastError });
+      console.warn('⚠️ Transaction confirmation timeout after', attempts, 'attempts');
       return { 
         confirmed: false, 
         error: lastError || 'Transaction confirmation timeout',
@@ -431,24 +313,19 @@ export default function Buy({
 
   const handleSwap = async () => {
     setShowConfirmDialog(false);
-    setDebugLogs([]);
-    addDebugLog('🚀 Starting swap process...');
 
     if (!localWalletConnected || !localWalletAddress) {
-      addDebugLog('❌ Wallet not connected');
       showToast('❌ Not Connected', 'Please connect your wallet first', 'error');
       return;
     }
 
     const amount = parseFloat(swapInput);
     if (!amount || amount <= 0) {
-      addDebugLog('❌ Invalid amount', { amount });
       showToast('❌ Invalid Amount', 'Please enter a valid amount', 'error');
       return;
     }
 
     if (amount > solBalance) {
-      addDebugLog('❌ Insufficient balance', { amount, solBalance });
       showToast('❌ Insufficient Balance', `Not enough SOL in wallet (${solBalance.toFixed(4)} SOL)`, 'error');
       return;
     }
@@ -456,24 +333,18 @@ export default function Buy({
     setIsSwapping(true);
     swapInProgress.current = true;
     walletResponseReceived.current = false;
-    walletResultRef.current = null;
     window.__pendingSwapSignature = null;
     window.__pendingSwapResult = null;
+    window.__pendingSignedTransaction = null;
 
     try {
-      addDebugLog('🔄 Swap details', {
-        amount,
-        wallet: localWalletAddress,
-        solBalance,
-        treatMint: TREAT_MINT_ADDRESS,
-        solMint: SOL_MINT
-      });
+      console.log('🔄 Starting swap with DFlow...');
+      console.log('  Amount:', amount);
+      console.log('  Wallet:', localWalletAddress);
 
       const amountInLamports = Math.floor(amount * 1e9);
-      addDebugLog('💰 Amount in lamports', { amountInLamports });
       
       // 1. Get quote
-      addDebugLog('📊 Step 1: Getting quote from DFlow...');
       let quoteData;
       try {
         quoteData = await getDflowQuote(amountInLamports);
@@ -481,266 +352,263 @@ export default function Buy({
         if (quoteData && quoteData.outAmount) {
           const outAmount = parseFloat(quoteData.outAmount) / 1e6;
           setSwapOutput(outAmount.toFixed(4));
-          addDebugLog('✅ Quote output', { outAmount, treatPrice });
         }
       } catch (quoteError) {
-        addDebugLog('❌ Quote error', { error: quoteError.message });
+        console.error('Quote error:', quoteError);
         throw new Error(`Could not get swap quote: ${quoteError.message}`);
       }
 
       // 2. Get swap transaction
-      addDebugLog('📝 Step 2: Getting swap transaction from DFlow...');
       let swapData;
       try {
         swapData = await getDflowSwap(quoteData);
       } catch (swapError) {
-        addDebugLog('❌ Swap transaction error', { error: swapError.message });
+        console.error('Swap transaction error:', swapError);
         throw new Error(`Could not create swap transaction: ${swapError.message}`);
       }
 
       if (!swapData || !swapData.swapTransaction) {
-        addDebugLog('❌ No swap transaction received');
         throw new Error('No swap transaction received from DFlow');
       }
 
       // 3. Deserialize the transaction
-      addDebugLog('📦 Step 3: Deserializing transaction...');
       let transaction;
       try {
         const transactionBytes = base64ToUint8Array(swapData.swapTransaction);
-        addDebugLog('📦 Transaction bytes length', { length: transactionBytes.length });
         
         try {
           transaction = VersionedTransaction.deserialize(transactionBytes);
-          addDebugLog('✅ Deserialized as VersionedTransaction');
+          console.log('✅ Deserialized as VersionedTransaction');
         } catch (versionedError) {
-          addDebugLog('⚠️ VersionedTransaction failed, trying legacy...', { error: versionedError.message });
+          console.log('Falling back to legacy Transaction deserialization');
           transaction = Transaction.from(transactionBytes);
-          addDebugLog('✅ Deserialized as legacy Transaction');
+          console.log('✅ Deserialized as legacy Transaction');
         }
-        
-        addDebugLog('📦 Transaction details', {
-          signatures: transaction.signatures?.length || 0,
-          instructions: transaction.instructions?.length || 
-                        transaction.message?.compiledInstructions?.length || 0
-        });
-        
       } catch (txError) {
-        addDebugLog('❌ Deserialization error', { error: txError.message });
+        console.error('Transaction deserialization error:', txError);
         throw new Error(`Failed to deserialize transaction: ${txError.message}`);
       }
 
       // 4. Check SOL balance for fees
-      addDebugLog('💰 Step 4: Checking SOL balance for fees...');
-      const feeEstimate = 0.000005; // Approximate
-      addDebugLog('💰 Fee estimate', { feeEstimate, solBalance });
-      
+      const feeEstimate = 0.000005;
       if (solBalance < feeEstimate) {
-        addDebugLog('❌ Insufficient SOL for fees', { need: feeEstimate, have: solBalance });
         throw new Error(`Insufficient SOL for fees. Need ${feeEstimate} SOL, have ${solBalance}`);
       }
-      addDebugLog('✅ Fee check passed');
 
-      // 5. Sign with Fixorium Wallet
-      addDebugLog('📤 Step 5: Sending to Fixorium Wallet...');
+      // 5. Get wallet to sign the transaction
       const fixoriumConnector = window.fixoriumWalletConnector;
       if (!fixoriumConnector) {
-        addDebugLog('❌ Wallet connector not found');
         throw new Error('Fixorium wallet connector not found. Please reconnect your wallet.');
       }
-      addDebugLog('✅ Wallet connector found');
 
-      addDebugLog('📝 Requesting Fixorium Wallet to sign and send transaction...');
-      addDebugLog('⏰ Starting 60 second timeout timer...');
+      console.log('📝 Requesting Fixorium Wallet to sign transaction...');
       
-      // Use the enhanced signAndSend with fallback
-      let result;
+      let signedTransaction = null;
+      let signature = null;
+
+      // 6. Sign the transaction with the wallet
       try {
-        result = await signAndSendWithFallback(fixoriumConnector, transaction);
-      } catch (signError) {
-        addDebugLog('❌ Signing error', { error: signError.message });
-        // Check one more time if we have a pending result
-        if (window.__pendingSwapResult) {
-          addDebugLog('✅ Using pending result from global storage');
-          result = window.__pendingSwapResult;
-          window.__pendingSwapResult = null;
-          walletResponseReceived.current = false;
-        } else if (window.__pendingSwapSignature) {
-          addDebugLog('✅ Using pending signature from global storage');
-          result = { signature: window.__pendingSwapSignature, success: true };
-          window.__pendingSwapSignature = null;
+        // Try signTransaction first (preferred for web wallets)
+        if (typeof fixoriumConnector.signTransaction === 'function') {
+          console.log('🔑 Using signTransaction method...');
+          signedTransaction = await fixoriumConnector.signTransaction(transaction);
+          console.log('✅ Transaction signed by wallet');
+        } 
+        // Fallback to signAndSendTransaction
+        else if (typeof fixoriumConnector.signAndSendTransaction === 'function') {
+          console.log('🔑 Using signAndSendTransaction method...');
+          
+          // Create a promise that resolves when we get the result
+          const signPromise = new Promise((resolve, reject) => {
+            const timeoutId = setTimeout(() => {
+              // Check if we have a pending result
+              if (window.__pendingSwapResult) {
+                resolve(window.__pendingSwapResult);
+                return;
+              }
+              reject(new Error('Wallet signing timeout'));
+            }, 60000);
+
+            // Call the wallet
+            fixoriumConnector.signAndSendTransaction(transaction)
+              .then(result => {
+                clearTimeout(timeoutId);
+                resolve(result);
+              })
+              .catch(error => {
+                clearTimeout(timeoutId);
+                reject(error);
+              });
+          });
+
+          const result = await signPromise;
+          console.log('📦 Wallet result:', result);
+
+          // Check if the wallet returned a signed transaction
+          if (result.signedTransaction) {
+            signedTransaction = result.signedTransaction;
+          } else if (result.transaction) {
+            signedTransaction = result.transaction;
+          } else if (result.payload?.signedTransaction) {
+            signedTransaction = result.payload.signedTransaction;
+          } else if (result.payload?.transaction) {
+            signedTransaction = result.payload.transaction;
+          } else if (result.signature && isValidSolanaSignature(result.signature)) {
+            // Wallet broadcast it themselves with a real signature
+            console.log('✅ Wallet broadcast transaction', { signature: result.signature });
+            signature = result.signature;
+          } else if (window.__pendingSignedTransaction) {
+            // Check global state for signed transaction
+            signedTransaction = window.__pendingSignedTransaction;
+            console.log('✅ Found signed transaction in global state');
+          } else if (window.__pendingSwapResult?.payload?.signedTransaction) {
+            signedTransaction = window.__pendingSwapResult.payload.signedTransaction;
+            console.log('✅ Found signed transaction in pending result');
+          }
         } else {
-          throw signError;
+          throw new Error('Wallet does not support signing transactions');
         }
-      }
-      
-      // Log the full result for debugging
-      addDebugLog('📦 Wallet result', {
-        keys: Object.keys(result || {}),
-        hasPayload: !!result?.payload,
-        success: result?.success || result?.payload?.success
-      });
-      console.log('📦 Full wallet result:', JSON.stringify(result, null, 2));
-
-      // Check if transaction was successful
-      const txSuccess = isTransactionSuccessful(result);
-      addDebugLog('✅ Transaction success flag', { txSuccess });
-
-      if (!txSuccess) {
-        addDebugLog('⚠️ Wallet returned failure or unknown response');
-        if (result?.error || result?.payload?.error) {
-          throw new Error(result.error || result.payload.error || 'Transaction failed in wallet');
-        }
-        addDebugLog('Continuing with transaction despite ambiguous result');
+      } catch (signError) {
+        console.error('Signing error:', signError);
+        throw signError;
       }
 
-      // Extract signature
-      let signature = result?.signature || result?.txid || result?.transactionId || 
-                      result?.tx || result?.transactionSignature;
-
-      if (!signature && result?.payload) {
-        signature = result.payload.signature || result.payload.txid || result.payload.transactionSignature;
-      }
-
-      const requestId = result?.requestId || result?.id;
-
-      addDebugLog('🔑 Extracted signature', { 
-        signature, 
-        isReal: signature ? isValidSolanaSignature(signature) : false,
-        requestId 
-      });
-
-      // Get output amount for display
-      const outputAmount = swapData.outAmount 
-        ? parseFloat(swapData.outAmount) / 1e6 
-        : parseFloat(swapOutput);
-
-      // Check if signature is fake (tx_ format)
-      const isFakeSignature = signature && typeof signature === 'string' && signature.startsWith('tx_');
-
-      if (isFakeSignature) {
-        addDebugLog('⚠️ Wallet returned fake signature (tx_ format)', { signature });
-        addDebugLog('✅ Transaction was submitted successfully (wallet confirmed)');
-        
-        // Show success immediately
-        showToast(
-          '✅ Swap Submitted! 🎉',
-          `Transaction sent to Solana network. ~${outputAmount.toFixed(4)} TREAT will be received once confirmed.`,
-          'success'
-        );
-
-        setSwapInput('');
-        setSwapOutput('0.0');
-        setUsdValue('~ $0.00');
-
-        // Refresh balances after a delay
-        if (window.refreshBalances) {
-          setTimeout(async () => {
-            addDebugLog('🔄 Refreshing balances after swap submission...');
-            await window.refreshBalances();
-          }, 5000);
-        }
-        
-        setIsSwapping(false);
-        swapInProgress.current = false;
-        return;
-      }
-
-      // If we have a valid signature, try to confirm it
-      if (signature && !isFakeSignature && isValidSolanaSignature(signature)) {
-        addDebugLog('✅ Valid signature received', { signature });
-        addDebugLog('🔗 Check on Solana Explorer: https://explorer.solana.com/tx/' + signature);
+      // 7. Broadcast the transaction if we have a signed transaction
+      if (signedTransaction) {
+        console.log('📡 Broadcasting signed transaction to blockchain...');
         
         try {
-          const confirmationResult = await waitForTransactionConfirmation(signature);
+          // Serialize the signed transaction
+          const serializedTx = signedTransaction.serialize();
+          const serializedBase64 = base64FromBytes(serializedTx);
+          
+          console.log('📤 Sending to RPC...', { txLength: serializedTx.length });
+          
+          // Send via RPC proxy
+          const rpcResponse = await fetch('/api/solana-rpc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: Date.now(),
+              method: 'sendTransaction',
+              params: [
+                serializedBase64,
+                { 
+                  encoding: 'base64',
+                  skipPreflight: false,
+                  preflightCommitment: 'confirmed'
+                }
+              ]
+            })
+          });
 
-          if (!confirmationResult.confirmed) {
-            addDebugLog('⚠️ Transaction may still be pending', { error: confirmationResult.error });
-            showToast(
-              '⏳ Transaction Pending',
-              `Your swap has been submitted but not yet confirmed. Check Solana Explorer.`,
-              'info'
-            );
-          } else {
-            addDebugLog('✅ Swap complete!');
+          const rpcData = await rpcResponse.json();
+          
+          if (rpcData.error) {
+            console.error('❌ RPC error:', rpcData.error);
+            throw new Error(rpcData.error.message || 'Transaction broadcast failed');
+          }
+
+          signature = rpcData.result;
+          console.log('✅ Transaction broadcast!', { signature });
+          console.log('🔗 https://explorer.solana.com/tx/' + signature);
+
+          // 8. Wait for confirmation
+          console.log('⏳ Waiting for confirmation...');
+          const confirmationResult = await waitForTransactionConfirmation(signature);
+          
+          const outputAmount = swapData.outAmount 
+            ? parseFloat(swapData.outAmount) / 1e6 
+            : parseFloat(swapOutput);
+
+          if (confirmationResult.confirmed) {
+            console.log('✅ Transaction confirmed!');
             showToast(
               '✅ Swap Complete! 🎉',
               `Successfully swapped ${amount} SOL for ${outputAmount.toFixed(4)} TREAT`,
               'success'
             );
+          } else {
+            console.warn('⚠️ Transaction pending');
+            showToast(
+              '⏳ Transaction Pending',
+              `Transaction sent but not yet confirmed. Check explorer.`,
+              'info'
+            );
           }
-        } catch (confirmError) {
-          addDebugLog('⚠️ Confirmation check failed', { error: confirmError.message });
-          showToast(
-            '✅ Swap Submitted',
-            `Transaction sent to Solana network. Check explorer for status.`,
-            'success'
-          );
+
+          setSwapInput('');
+          setSwapOutput('0.0');
+          setUsdValue('~ $0.00');
+
+          if (window.refreshBalances) {
+            setTimeout(async () => {
+              console.log('🔄 Refreshing balances...');
+              await window.refreshBalances();
+            }, 5000);
+          }
+
+        } catch (broadcastError) {
+          console.error('Broadcast error:', broadcastError);
+          throw broadcastError;
         }
-      } else {
-        // No signature at all, but we might have a success flag
-        addDebugLog('✅ Transaction likely submitted successfully');
+      } 
+      // If wallet broadcast it themselves with a real signature
+      else if (signature && isValidSolanaSignature(signature)) {
+        console.log('✅ Wallet broadcast transaction', { signature });
         showToast(
-          '✅ Swap Submitted! 🎉',
-          `Transaction sent to Solana network. ~${outputAmount.toFixed(4)} TREAT will be received once confirmed.`,
+          '✅ Swap Complete! 🎉',
+          `Transaction confirmed on-chain`,
           'success'
         );
-      }
-
-      setSwapInput('');
-      setSwapOutput('0.0');
-      setUsdValue('~ $0.00');
-
-      if (window.refreshBalances) {
-        setTimeout(async () => {
-          addDebugLog('🔄 Refreshing balances...');
-          await window.refreshBalances();
-        }, 5000);
+        setSwapInput('');
+        setSwapOutput('0.0');
+        setUsdValue('~ $0.00');
+      } 
+      // If wallet returned a fake tx_ signature, try to handle it
+      else if (signature && signature.startsWith('tx_')) {
+        console.warn('⚠️ Wallet returned fake signature, but transaction may have been submitted');
+        showToast(
+          '✅ Swap Submitted! 🎉',
+          `Transaction sent to Solana network. Check wallet history for status.`,
+          'success'
+        );
+        setSwapInput('');
+        setSwapOutput('0.0');
+        setUsdValue('~ $0.00');
+      } 
+      else {
+        throw new Error('No signed transaction or valid signature received from wallet');
       }
 
     } catch (error) {
-      addDebugLog('❌ Swap error', { 
-        error: error.message,
-        stack: error.stack 
-      });
       console.error('Swap error:', error);
       
       let errorMessage = error.message || 'Please try again';
       
-      // Enhanced error handling
       if (errorMessage.includes('User rejected')) {
         showToast('❌ Transaction Rejected', 'You rejected the transaction in wallet', 'error');
       } else if (errorMessage.includes('No route found') || errorMessage.includes('liquidity') || errorMessage.includes('insufficient liquidity')) {
         showToast('❌ No Liquidity', 'TREAT token may not have enough liquidity for this swap. Try a smaller amount.', 'error');
       } else if (errorMessage.includes('timeout') || errorMessage.includes('Timed out')) {
-        // Check if we have a pending result
-        if (window.__pendingSwapResult) {
-          addDebugLog('✅ Using pending result after timeout error');
-          const result = window.__pendingSwapResult;
-          window.__pendingSwapResult = null;
-          
-          const payload = result.payload || result;
-          if (payload.success === true) {
-            showToast(
-              '✅ Swap Submitted!',
-              `Transaction sent to network. Check Solana Explorer.`,
-              'success'
-            );
-            setSwapInput('');
-            setSwapOutput('0.0');
-            setUsdValue('~ $0.00');
-            setIsSwapping(false);
-            swapInProgress.current = false;
-            if (window.refreshBalances) {
-              setTimeout(() => window.refreshBalances(), 5000);
-            }
-            return;
+        if (window.__pendingSwapResult?.payload?.success === true) {
+          showToast(
+            '✅ Swap Submitted!',
+            `Transaction sent to network. Check explorer for status.`,
+            'success'
+          );
+          setSwapInput('');
+          setSwapOutput('0.0');
+          setUsdValue('~ $0.00');
+          setIsSwapping(false);
+          swapInProgress.current = false;
+          if (window.refreshBalances) {
+            setTimeout(() => window.refreshBalances(), 5000);
           }
+          return;
         }
         showToast('⏳ Timeout', 'Transaction took too long. Check explorer for status.', 'info');
-        if (window.refreshBalances) {
-          setTimeout(() => window.refreshBalances(), 3000);
-        }
       } else if (errorMessage.includes('Rate limited') || errorMessage.includes('429')) {
         showToast('❌ Rate Limited', 'Too many requests. Please wait a moment and try again.', 'error');
       } else if (errorMessage.includes('API key') || errorMessage.includes('not configured')) {
@@ -758,6 +626,8 @@ export default function Buy({
       setIsSwapping(false);
       swapInProgress.current = false;
       window.__pendingSwapSignature = null;
+      window.__pendingSwapResult = null;
+      window.__pendingSignedTransaction = null;
     }
   };
 
@@ -766,60 +636,6 @@ export default function Buy({
       <div className="section-header" style={{ justifyContent: 'center', marginBottom: '1.5rem' }}>
         <span className="accent green"></span>
         BUY TREAT TOKEN
-      </div>
-
-      {/* Debug Logs Toggle */}
-      <div style={{ marginBottom: '1rem' }}>
-        <button 
-          onClick={() => {
-            const logs = document.getElementById('debugLogs');
-            if (logs) {
-              logs.style.display = logs.style.display === 'none' ? 'block' : 'none';
-            }
-          }}
-          style={{
-            fontSize: '10px',
-            color: '#a89890',
-            background: '#121010',
-            border: '1px solid #1f1a18',
-            padding: '4px 12px',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          {debugLogs.length > 0 ? `📋 Debug Logs (${debugLogs.length})` : '📋 No Debug Logs'}
-        </button>
-        
-        <div id="debugLogs" style={{ 
-          display: 'none',
-          marginTop: '8px',
-          background: '#0a0a0a',
-          border: '1px solid #1f1a18',
-          borderRadius: '8px',
-          padding: '8px',
-          maxHeight: '200px',
-          overflowY: 'auto',
-          fontSize: '9px',
-          fontFamily: 'monospace',
-          color: '#a89890'
-        }}>
-          {debugLogs.map((log, index) => (
-            <div key={index} style={{ 
-              borderBottom: '1px solid #1f1a18', 
-              padding: '4px 0',
-              display: 'flex',
-              gap: '8px'
-            }}>
-              <span style={{ color: '#6b5f58' }}>{log.timestamp.substring(11, 19)}</span>
-              <span style={{ color: '#f0ece8' }}>{log.message}</span>
-              {log.data && (
-                <span style={{ color: '#14F195', fontSize: '8px' }}>
-                  {typeof log.data === 'object' ? JSON.stringify(log.data).substring(0, 100) : log.data}
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
       </div>
 
       <div className="swap-card">
@@ -855,14 +671,13 @@ export default function Buy({
               border: '1px solid #1f1a18'
             }}>
               <span style={{ color: '#a89890', fontSize: '0.8rem' }}>
-                Connected via: <strong style={{ color: '#f0ece8' }}>🔷 Fixorium</strong>
+                 <strong style={{ color: '#f0ece8' }}>FIXORIUM</strong>
               </span>
               <span style={{ color: '#14F195', fontSize: '0.8rem' }}>
                 {localWalletAddress ? `${localWalletAddress.slice(0, 6)}...${localWalletAddress.slice(-6)}` : 'No address'}
               </span>
             </div>
 
-            {/* SOL Balance Warning */}
             {solBalance < 0.0005 && (
               <div style={{
                 background: '#1a0a0a',

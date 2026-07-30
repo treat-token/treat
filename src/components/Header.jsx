@@ -95,7 +95,7 @@ function WalletModal({ isOpen, onClose, onConnect, isConnecting }) {
               fontSize: '22px',
               flexShrink: 0,
             }}>
-              <span>🔷</span>
+              <span></span>
             </div>
             <div style={{
               flex: 1,
@@ -305,8 +305,8 @@ export default function Header({
             {isConnected && displayAddress ? (
               <div className="header-wallet-status">
                 <span className="status-dot connected"></span>
-                <span className="wallet-icon">🔷</span>
-                <span className="wallet-name">Fixorium</span>
+                <span className="wallet-icon"></span>
+                <span className="wallet-name">FIXORIUM</span>
                 <span className="wallet-addr">
                   {`${displayAddress.slice(0, 6)}...${displayAddress.slice(-6)}`}
                 </span>
